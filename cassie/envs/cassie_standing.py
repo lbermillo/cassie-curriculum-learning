@@ -137,11 +137,9 @@ class CassieEnv:
         foot_pos = np.concatenate([left_foot_pos, right_foot_pos])
 
         # Upper Body Pose Modulation
-        left_roll = np.exp(-qpos[7] ** 2)
-        left_pitch = np.exp(-qpos[9] ** 2)
-        right_roll = np.exp(-qpos[21] ** 2)
-        right_pitch = np.exp(-qpos[23] ** 2)
-        r_pose = 0.25 * left_roll + 0.25 * left_pitch + 0.25 * right_roll + 0.25 * right_pitch
+        pelvis_roll = np.exp(-qpos[4])
+        pelvis_pitch = np.exp(-qpos[5])
+        r_pose = 0.5 * pelvis_roll + 0.5 * pelvis_pitch
 
         # COM Position Modulation
         capture_point_pos = np.sqrt(0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])) ** 2 + 0.5 * (

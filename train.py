@@ -38,6 +38,8 @@ if __name__ == '__main__':
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
                         help='Saves the policy to the results folder (default: False)')
+    parser.add_argument('--tag', action='store', default='',
+                        help='Adds a tag at the end of agent_id (default: None)')
     parser.add_argument('--load', '-l', action='store', default=None, dest='load',
                         help='Provide path to existing model to load it (default=None)')
     parser.add_argument('--tensorboard', action='store_true', default=False, dest='tensorboard',
@@ -86,15 +88,16 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]'.format(envs[args.env][0],
-                                                                    args.rcut,
-                                                                    args.tw,
-                                                                    args.algo.upper(),
-                                                                    args.alr,
-                                                                    args.clr,
-                                                                    args.hidden,
-                                                                    args.batch,
-                                                                    args.tau, )
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]{}'.format(envs[args.env][0],
+                                                                      args.rcut,
+                                                                      args.tw,
+                                                                      args.algo.upper(),
+                                                                      args.alr,
+                                                                      args.clr,
+                                                                      args.hidden,
+                                                                      args.batch,
+                                                                      args.tau,
+                                                                      args.tag)
 
     # create SummaryWriter instance to log information
     writer = SummaryWriter('runs/{}. {}/{}'.format(int(args.env + 1),
