@@ -137,10 +137,10 @@ class CassieEnv:
         foot_pos = np.concatenate([left_foot_pos, right_foot_pos])
 
         # Upper Body Pose Modulation
-        left_roll = np.exp(-qpos[6] ** 2)
-        left_pitch = np.exp(-qpos[8] ** 2)
-        right_roll = np.exp(-qpos[13] ** 2)
-        right_pitch = np.exp(-qpos[15] ** 2)
+        left_roll = np.exp(-qpos[7] ** 2)
+        left_pitch = np.exp(-qpos[9] ** 2)
+        right_roll = np.exp(-qpos[21] ** 2)
+        right_pitch = np.exp(-qpos[23] ** 2)
         r_pose = 0.25 * left_roll + 0.25 * left_pitch + 0.25 * right_roll + 0.25 * right_pitch
 
         # COM Position Modulation
@@ -148,11 +148,11 @@ class CassieEnv:
                 np.abs(foot_pos[1]) + np.abs(foot_pos[4])) ** 2)
 
         xy_com_pos = np.exp(-(capture_point_pos) ** 2)
-        z_com_pos = np.exp(-(qpos[1] - 0.9) ** 2)
+        z_com_pos = np.exp(-(qpos[2] - 0.9) ** 2)
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # COM Velocity Modulation
-        capture_point_vel = capture_point_pos * np.sqrt(9.8 / np.abs(qpos[1]))
+        capture_point_vel = capture_point_pos * np.sqrt(9.8 / np.abs(qpos[2]))
 
         xy_com_vel = np.exp(-((capture_point_vel - np.sqrt(qvel[0] ** 2 + qvel[1] ** 2)) ** 2))
         z_com_vel = np.exp(-(qvel[2] ** 2))
@@ -168,10 +168,11 @@ class CassieEnv:
         reward = 0.33 * r_pose + 0.33 * r_com_pos + 0.34 * r_com_vel
 
         # Ground Contact
-        if np.linalg.norm(self.cassie_state.leftFoot.heelForce) < 5 and np.linalg.norm(
-                self.cassie_state.leftFoot.toeForce) < 5 and np.linalg.norm(
-            self.cassie_state.rightFoot.heelForce) < 5 and np.linalg.norm(
-            self.cassie_state.rightFoot.heelForce) < 5:
+        if np.linalg.norm(self.cassie_state.leftFoot.heelForce)  < 5 and \
+           np.linalg.norm(self.cassie_state.leftFoot.toeForce )  < 5 and \
+           np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5 and \
+           np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5:
+
             reward = reward - 0.5
 
         return reward
