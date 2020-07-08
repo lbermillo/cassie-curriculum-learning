@@ -1,10 +1,10 @@
-import torch
 import time
+
 import numpy as np
+import torch
 
 from .algorithms.TD3 import TD3
 from .utils.ReplayMemory import ReplayMemory
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -25,8 +25,9 @@ class Agent:
 
         # load existing model when provided
         if chkpt_pth is not None:
+
             # load model
-            self.model.load(chkpt_pth)
+            self.model.load(chkpt_pth, device)
 
             # DEBUG check if it stays relatively the same policy w/out random actions
             self.random_action_steps = 0
@@ -130,14 +131,15 @@ class Agent:
 
         return step, episode_reward
 
-    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1):
+    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False):
         total_rewards = 0.
 
         # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
         #  orientation, pelvis height, etc.) longer
 
-        for _ in range(eval_eps):
+        for eps in range(eval_eps):
             with torch.no_grad():
+                episode_reward = 0
                 state = env.reset()
                 done = False
                 step = 0
@@ -145,12 +147,18 @@ class Agent:
                 while step < max_steps and not done:
                     action = self.model.act(state)
                     state, reward, done, _ = env.step(action)
-                    total_rewards += reward
+                    episode_reward += reward
                     step += 1
 
                     if render:
                         env.render()
                         time.sleep(dt / speedup)
+
+                # Update total rewards
+                total_rewards += episode_reward
+
+                if print_stats:
+                    print('Episode {}: {:10.3f}'.format(eps, episode_reward))
 
         return total_rewards / eval_eps
 

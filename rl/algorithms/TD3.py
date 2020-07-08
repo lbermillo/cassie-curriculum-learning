@@ -5,7 +5,6 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
-
 from rl.networks.Actor import Actor
 from rl.networks.Critic import Critic
 
@@ -119,9 +118,9 @@ class TD3:
 
         torch.save(self.get_state_dict(), '{}/{}.chkpt'.format(directory, filename))
 
-    def load(self, path):
+    def load(self, path, map_location):
         # load checkpoint
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location=map_location)
 
         # load actor/critic state dicts
         self.actor.load_state_dict(checkpoint['actor'])
