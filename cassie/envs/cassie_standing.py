@@ -93,6 +93,7 @@ class CassieEnv:
         self.cassie_state = self.sim.step_pd(self.u)
 
     def step(self, action):
+
         for _ in range(self.simrate):
             self.step_simulation(action)
 
@@ -130,52 +131,78 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self):
+        gravity = 9.81
+
+        # Cassie mass properties
+        mass = self.sim.get_body_mass()
+        weight = mass * gravity
+
+        # CoM Position and Velocity
         qpos = np.copy(self.sim.qpos())
         qvel = np.copy(self.sim.qvel())
+
+        # Foot Position
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
         foot_pos = np.concatenate([left_foot_pos, right_foot_pos])
 
-        # Upper Body Pose Modulation
+        # Foot Force
+        foot_grf = self.sim.get_foot_forces()
+
+        # A. Standing Rewards
+        # 1. Upper Body Pose Modulation
         pelvis_roll = np.exp(-qpos[4] ** 2)
         pelvis_pitch = np.exp(-qpos[5] ** 2)
+
         r_pose = 0.5 * pelvis_roll + 0.5 * pelvis_pitch
 
-        # COM Position Modulation
-        target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
-                               0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
+        # 2. CoM Position Modulation
+        # 2a. Horizontal Position Component (target position is the center of the support polygon)
+        xy_target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
+                                  0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
+        xy_com_pos = np.exp(-(np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
 
-        xy_com_pos = np.exp(-(np.linalg.norm(target_pos - qpos[:2])) ** 2)
+        # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
         z_com_pos = np.exp(-(qpos[2] - 0.9) ** 2)
+
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
-        # COM Velocity Modulation
-        capture_point_pos = np.sqrt(0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])) ** 2
-                                    + 0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4])) ** 2)
-        capture_point_vel = capture_point_pos * np.sqrt(9.8 / np.abs(qpos[2]))
+        # 3. CoM Velocity Modulation
+        # 3a. Horizontal Velocity Component (desired CoM velocity is derived from capture point)
+        xy_target_vel = (xy_target_pos - qpos[:2]) / np.sqrt(qpos[2] / gravity)
+        xy_com_vel = np.exp(-np.linalg.norm(xy_target_vel - qvel[:2]) ** 2)
 
-        xy_com_vel = np.exp(-((capture_point_vel - np.sqrt(qvel[0] ** 2 + qvel[1] ** 2)) ** 2))
+        # 3b. Vertical Velocity Component (desired vertical CoM velocity is 0)
         z_com_vel = np.exp(-(qvel[2] ** 2))
 
-        if np.linalg.norm(self.cassie_state.leftFoot.heelForce) < 5 or np.linalg.norm(
-                self.cassie_state.leftFoot.toeForce) < 5 or np.linalg.norm(
-            self.cassie_state.rightFoot.heelForce) < 5 or np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5:
-            r_com_vel = z_com_vel
-        else:
-            r_com_vel = 0.5 * xy_com_vel + 0.5 * z_com_vel
+        # the reward term for horizontal CoM velocity is deemed invalid and is set to 0
+        # when the robot is in the air (no foot contact)
+        contact_weight = lambda w: w / (1 + np.exp((weight / 2) - np.linalg.norm(foot_grf)))
+        r_com_vel = contact_weight(0.5) * xy_com_vel + 0.5 * z_com_vel
+
+        # 4. Ground Force Modulation
+        target_grf = weight / 2.
+        left_grf  = np.exp(-(target_grf - foot_grf[0]) ** 2)
+        right_grf = np.exp(-(target_grf - foot_grf[1]) ** 2)
+
+        r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # Total Reward
-        reward = 0.33 * r_pose + 0.33 * r_com_pos + 0.34 * r_com_vel
+        reward = 0.25 * r_pose + 0.25 * r_com_pos + 0.25 * r_com_vel + 0.25 * r_grf
 
-        # Ground Contact
-        if np.linalg.norm(self.cassie_state.leftFoot.heelForce)  < 5 and \
-           np.linalg.norm(self.cassie_state.leftFoot.toeForce)   < 5 and \
-           np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5 and \
-           np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5:
+        # B. Standing Cost
+        # 5. Ground Contact
+        c_contact = 0.3 * np.exp(-np.linalg.norm(foot_grf) ** 2)
 
-            reward = reward - 0.5
+        # 6. Power Consumption
+        joint_torques = np.array(self.cassie_state.motor.torque[:10])
+        joint_velocities = np.array(self.cassie_state.motor.velocity[:10])
+        c_power = 0.2 * np.exp(-np.linalg.norm(joint_torques * joint_velocities) ** 2)
 
-        return reward
+        # Total Cost
+        cost = c_contact + c_power
+
+        return reward - cost
 
     def get_full_state(self):
 
