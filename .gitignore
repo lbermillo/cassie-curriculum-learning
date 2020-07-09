@@ -140,5 +140,8 @@ cython_debug/
 # Tensorboard runs
 runs/
 
+# Checkpoints
+results/
+
 # No clue what these are
 .DS_Store
