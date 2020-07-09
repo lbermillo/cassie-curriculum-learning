@@ -142,14 +142,16 @@ class CassieEnv:
         r_pose = 0.5 * pelvis_roll + 0.5 * pelvis_pitch
 
         # COM Position Modulation
-        capture_point_pos = np.sqrt(0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])) ** 2 + 0.5 * (
-                np.abs(foot_pos[1]) + np.abs(foot_pos[4])) ** 2)
+        target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
+                               0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
 
-        xy_com_pos = np.exp(-(capture_point_pos) ** 2)
+        xy_com_pos = np.exp(-(np.linalg.norm(target_pos - qpos[:2])) ** 2)
         z_com_pos = np.exp(-(qpos[2] - 0.9) ** 2)
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # COM Velocity Modulation
+        capture_point_pos = np.sqrt(0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])) ** 2
+                                    + 0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4])) ** 2)
         capture_point_vel = capture_point_pos * np.sqrt(9.8 / np.abs(qpos[2]))
 
         xy_com_vel = np.exp(-((capture_point_vel - np.sqrt(qvel[0] ** 2 + qvel[1] ** 2)) ** 2))
@@ -167,7 +169,7 @@ class CassieEnv:
 
         # Ground Contact
         if np.linalg.norm(self.cassie_state.leftFoot.heelForce)  < 5 and \
-           np.linalg.norm(self.cassie_state.leftFoot.toeForce )  < 5 and \
+           np.linalg.norm(self.cassie_state.leftFoot.toeForce)   < 5 and \
            np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5 and \
            np.linalg.norm(self.cassie_state.rightFoot.heelForce) < 5:
 

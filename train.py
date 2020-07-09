@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+import torch
+import random
 import argparse
+import numpy as np
 
 from rl.agent import Agent
 from cassie.envs import cassie, cassie_standing
@@ -34,6 +37,8 @@ if __name__ == '__main__':
                         help='Number of timesteps in each episode, 1 cycle is about 24 timesteps (default: 30)')
     parser.add_argument('--eval_interval', type=int, default=100,
                         help='Evaluate policy every specified timestep intervals (default: 100)')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Creates a seed to the specified value (default: None)')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -83,6 +88,12 @@ if __name__ == '__main__':
                         help='Value target update per no. of updates per step (default: 1)')
 
     args = parser.parse_args()
+
+    if args.seed is not None:
+        # initialize seeds
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
 
     # create envs list
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
