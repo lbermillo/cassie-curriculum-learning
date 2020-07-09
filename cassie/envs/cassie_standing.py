@@ -134,7 +134,7 @@ class CassieEnv:
         gravity = 9.81
 
         # Cassie mass properties
-        mass = self.sim.get_body_mass()
+        mass = np.sum(self.sim.get_body_mass())
         weight = mass * gravity
 
         # CoM Position and Velocity
