@@ -143,7 +143,10 @@ class CassieEnv:
         # Foot Position
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
-        foot_pos = np.concatenate([left_foot_pos, right_foot_pos])
+
+        # Add offset to get midfoot position (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
+        midfoot_offset = [0.1762, 0.05219, 0.]
+        foot_pos = np.concatenate([left_foot_pos + midfoot_offset, right_foot_pos + midfoot_offset])
 
         # Foot Force
         foot_grf = self.sim.get_foot_forces()
