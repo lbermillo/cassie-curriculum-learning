@@ -131,9 +131,8 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self):
+        # Cassie weight properties
         gravity = 9.81
-
-        # Cassie mass properties
         mass = np.sum(self.sim.get_body_mass())
         weight = mass * gravity
 
@@ -181,9 +180,15 @@ class CassieEnv:
         r_com_vel = contact_weight(0.5) * xy_com_vel + 0.5 * z_com_vel
 
         # 4. Ground Force Modulation
-        target_grf = weight / 2.
+        # Fix: Foot forces are registering as a total of ~500N which doesn't make sense
+        # if Cassie's mass is ~33 kg, so instead of having the target_grf be weight / 2,
+        # it'll be np.sum(foot_grf) / 2 to signal even distribution still
+
+        target_grf = np.sum(foot_grf) / 2.
         left_grf  = np.exp(-(target_grf - foot_grf[0]) ** 2)
         right_grf = np.exp(-(target_grf - foot_grf[1]) ** 2)
+
+        print(mass, foot_grf, left_grf, right_grf)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
