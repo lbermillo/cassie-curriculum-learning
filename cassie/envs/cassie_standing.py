@@ -185,13 +185,13 @@ class CassieEnv:
         # 4. Ground Force Modulation
         # Fix: Foot forces are registering as a total of ~500N which doesn't make sense
         # if Cassie's mass is ~33 kg, so instead of having the target_grf be weight / 2,
-        # it'll be np.sum(foot_grf) / 2 to signal even distribution still
+        # it'll be np.sum(foot_grf) / 2 to signal even distribution. Also added grf tolerance
+        # b/c the agent is having a hard time learning this reward
+        grf_tolerance = 10
 
         target_grf = np.sum(foot_grf) / 2.
-        left_grf  = np.exp(-(target_grf - foot_grf[0]) ** 2)
-        right_grf = np.exp(-(target_grf - foot_grf[1]) ** 2)
-
-        print(mass, foot_grf, left_grf, right_grf)
+        left_grf  = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
+        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 2)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
