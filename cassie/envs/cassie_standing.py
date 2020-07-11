@@ -144,9 +144,9 @@ class CassieEnv:
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
 
-        # Add offset to get midfoot position (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        midfoot_offset = [0.1762, 0.05219, 0.]
-        foot_pos = np.concatenate([left_foot_pos + midfoot_offset, right_foot_pos + midfoot_offset])
+        # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
+        midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        foot_pos = np.concatenate([left_foot_pos - midfoot_offset[:3], right_foot_pos - midfoot_offset[3:]])
 
         # Foot Force
         foot_grf = self.sim.get_foot_forces()
@@ -175,12 +175,12 @@ class CassieEnv:
         xy_com_vel = np.exp(-np.linalg.norm(xy_target_vel - qvel[:2]) ** 2)
 
         # 3b. Vertical Velocity Component (desired vertical CoM velocity is 0)
-        z_com_vel = np.exp(-(qvel[2] ** 2))
+        z_com_vel = np.exp(-qvel[2] ** 2)
 
         # the reward term for horizontal CoM velocity is deemed invalid and is set to 0
         # when the robot is in the air (no foot contact)
         contact_weight = lambda w: w / (1 + np.exp((weight / 2) - np.linalg.norm(foot_grf)))
-        r_com_vel = contact_weight(0.5) * xy_com_vel + 0.5 * z_com_vel
+        r_com_vel = contact_weight(0.5) * xy_com_vel + (1. - contact_weight(0.5)) * z_com_vel
 
         # 4. Ground Force Modulation
         # Fix: Foot forces are registering as a total of ~500N which doesn't make sense
@@ -200,15 +200,26 @@ class CassieEnv:
 
         # B. Standing Cost
         # 5. Ground Contact
-        c_contact = 0.3 * np.exp(-np.linalg.norm(foot_grf) ** 2)
+        c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
 
         # 6. Power Consumption
         joint_torques = np.array(self.cassie_state.motor.torque[:10])
         joint_velocities = np.array(self.cassie_state.motor.velocity[:10])
-        c_power = 0.2 * np.exp(-np.linalg.norm(joint_torques * joint_velocities) ** 2)
+        c_power = 1 - np.exp(-np.linalg.norm(joint_torques * joint_velocities) ** 2)
+
+        # 7. Foot Orientation (to prevent standing on heels or toes only)
+        neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
+                                        -0.6609396704367185, 0.663921021343526])
+        l_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("left-foot")) ** 2)
+        r_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("right-foot")) ** 2)
+
+        c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
+
+        # 8. Falling
+        c_fall = 1 if qpos[2] < 0.3 else 0
 
         # Total Cost
-        cost = c_contact + c_power
+        cost = 0.3 * c_contact + 0.1 * c_power + 0.2 * c_foot_orient + 0.4 * c_fall
 
         return reward - cost
 
