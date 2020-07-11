@@ -8,7 +8,7 @@ from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True, reward_cutoff=0.3, target_action_weight=1.0,
-                 forces=(0, 0, 0), config="cassie/cassiemujoco/cassie.xml"):
+                 forces=(0, 0, 0), min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml"):
 
         # Using CassieSim
         self.config = config
@@ -21,6 +21,8 @@ class CassieEnv:
         self.reward_cutoff = reward_cutoff
         self.target_action_weight = target_action_weight
         self.forces = forces
+        self.min_height = min_height
+        self.max_height = max_height
 
         # Initialize Observation and Action Spaces (+1 is for speed input)
         self.observation_size = 40 + 1
@@ -101,7 +103,7 @@ class CassieEnv:
         state = self.get_full_state()
 
         # Early termination condition
-        height_in_bounds = 0.4 < self.sim.qpos()[2] < 3.0
+        height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
         reward = self.compute_reward() if height_in_bounds else 0.0
@@ -216,7 +218,7 @@ class CassieEnv:
         c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
 
         # 8. Falling
-        c_fall = 1 if qpos[2] < 0.3 else 0
+        c_fall = 1 if qpos[2] < self.min_height else 0
 
         # Total Cost
         cost = 0.3 * c_contact + 0.1 * c_power + 0.2 * c_foot_orient + 0.4 * c_fall
