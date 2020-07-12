@@ -132,7 +132,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self):
+    def compute_reward(self, rw=(0.3, 0.3, 0.1, 0.3), cw=(0.3, 0.05, 0.2, 0.35, 0.1)):
         # Cassie weight properties
         gravity = 9.81
         mass = np.sum(self.sim.get_body_mass())
@@ -164,10 +164,11 @@ class CassieEnv:
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
                                   0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
-        xy_com_pos = np.exp(-(np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
+        xy_com_pos = np.exp(-(np.linalg.norm(xy_target_pos - qpos[:2])) ** 4)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_com_pos = np.exp(-(qpos[2] - 0.9) ** 2)
+        z_target_pos = 0.9
+        z_com_pos = np.exp(-(z_target_pos - qpos[2]) ** 4)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
@@ -198,7 +199,7 @@ class CassieEnv:
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # Total Reward
-        reward = 0.25 * r_pose + 0.25 * r_com_pos + 0.25 * r_com_vel + 0.25 * r_grf
+        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf
 
         # B. Standing Cost
         # 5. Ground Contact
@@ -220,8 +221,12 @@ class CassieEnv:
         # 8. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
+        # 9. Body Deviation from I.C.
+        body_initial_xy_pos = np.array([0., 0.])
+        c_body_deviation = 1 - np.exp(-np.linalg.norm(body_initial_xy_pos - self.cassie_state.pelvis.position[:2]) ** 2)
+
         # Total Cost
-        cost = 0.3 * c_contact + 0.1 * c_power + 0.2 * c_foot_orient + 0.4 * c_fall
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_orient + cw[3] * c_fall + cw[4] * c_body_deviation
 
         return reward - cost
 
