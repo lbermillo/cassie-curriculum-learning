@@ -23,6 +23,7 @@ class CassieEnv:
         self.forces = forces
         self.min_height = min_height
         self.max_height = max_height
+        self.prev_velocity = np.copy(self.sim.qvel())[:3]
 
         # Initialize Observation and Action Spaces (+1 is for speed input)
         self.observation_size = 40 + 1
@@ -106,7 +107,7 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward() if height_in_bounds else 0.0
+        reward = self.compute_reward() - self.compute_cost() if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -132,7 +133,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, rw=(0.3, 0.3, 0.1, 0.3), cw=(0.3, 0.05, 0.2, 0.35, 0.1)):
+    def compute_reward(self, rw=(0.3, 0.2, 0.2, 0.3)):
         # Cassie weight properties
         gravity = 9.81
         mass = np.sum(self.sim.get_body_mass())
@@ -193,7 +194,7 @@ class CassieEnv:
         grf_tolerance = 10
 
         target_grf = np.sum(foot_grf) / 2.
-        left_grf  = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
+        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
         right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 2)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
@@ -201,16 +202,38 @@ class CassieEnv:
         # Total Reward
         reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf
 
-        # B. Standing Cost
-        # 5. Ground Contact
+        return reward
+
+    def compute_cost(self, cw=(0.3, 0.05, 0.2, 0.35, 0.1)):
+        # Cassie weight properties
+        gravity = 9.81
+        mass = np.sum(self.sim.get_body_mass())
+        weight = mass * gravity
+
+        # CoM Position and Velocity
+        qpos = np.copy(self.sim.qpos())
+        qvel = np.copy(self.sim.qvel())
+
+        # Foot Position
+        left_foot_pos = self.cassie_state.leftFoot.position[:]
+        right_foot_pos = self.cassie_state.rightFoot.position[:]
+
+        # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
+        midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        foot_pos = np.concatenate([left_foot_pos - midfoot_offset[:3], right_foot_pos - midfoot_offset[3:]])
+
+        # Foot Force
+        foot_grf = self.sim.get_foot_forces()
+
+        # 1. Ground Contact
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
 
-        # 6. Power Consumption
+        # 2. Power Consumption
         joint_torques = np.array(self.cassie_state.motor.torque[:10])
         joint_velocities = np.array(self.cassie_state.motor.velocity[:10])
         c_power = 1 - np.exp(-np.linalg.norm(joint_torques * joint_velocities) ** 2)
 
-        # 7. Foot Orientation (to prevent standing on heels or toes only)
+        # 3. Foot Orientation (to prevent standing on heels or toes only)
         neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
                                         -0.6609396704367185, 0.663921021343526])
         l_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("left-foot")) ** 2)
@@ -218,17 +241,16 @@ class CassieEnv:
 
         c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
 
-        # 8. Falling
+        # 4. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
-        # 9. Body Deviation from I.C.
-        body_initial_xy_pos = np.array([0., 0.])
-        c_body_deviation = 1 - np.exp(-np.linalg.norm(body_initial_xy_pos - self.cassie_state.pelvis.position[:2]) ** 2)
+        # 5. Body Deviation from I.C.
+        c_body_deviation = 1 - np.exp(-np.linalg.norm(self.cassie_state.pelvis.position[:3]) ** 2)
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_orient + cw[3] * c_fall + cw[4] * c_body_deviation
 
-        return reward - cost
+        return cost
 
     def get_full_state(self):
 
