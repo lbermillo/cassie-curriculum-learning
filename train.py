@@ -39,6 +39,8 @@ if __name__ == '__main__':
                         help='Evaluate policy every specified timestep intervals (default: 100)')
     parser.add_argument('--seed', type=int, default=None,
                         help='Creates a seed to the specified value (default: None)')
+    parser.add_argument('--expl_noise', type=float, default=0.1,
+                        help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -77,8 +79,6 @@ if __name__ == '__main__':
                         help='Policy update frequency (default=2)')
     parser.add_argument('--policy_noise', type=float, default=0.35,
                         help='Noise added to target networks during critic update (default=0.35)')
-    parser.add_argument('--expl_noise', type=float, default=0.1,
-                        help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
 
     # SAC Specific Parameters
     parser.add_argument('--alpha', type=float, default=0.2,
@@ -101,16 +101,20 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]{}'.format(envs[args.env][0],
-                                                                      args.rcut,
-                                                                      args.tw,
-                                                                      args.algo.upper(),
-                                                                      args.alr,
-                                                                      args.clr,
-                                                                      args.hidden,
-                                                                      args.batch,
-                                                                      args.tau,
-                                                                      args.tag)
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EN{}S{}]{}'.format(envs[args.env][0],
+                                                                                                args.rcut,
+                                                                                                args.tw,
+                                                                                                args.algo.upper(),
+                                                                                                args.alr,
+                                                                                                args.clr,
+                                                                                                args.hidden,
+                                                                                                args.batch,
+                                                                                                args.tau,
+                                                                                                args.training_steps,
+                                                                                                args.eps_steps,
+                                                                                                args.expl_noise,
+                                                                                                args.seed,
+                                                                                                args.tag)
 
     # create SummaryWriter instance to log information
     writer = SummaryWriter('runs/{}. {}/{}'.format(int(args.env + 1),
