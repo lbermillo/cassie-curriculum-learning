@@ -19,11 +19,17 @@ class CassieEnv:
         self.clock_based = clock_based
         self.state_est = state_est
         self.reward_cutoff = reward_cutoff
-        self.target_action_weight = target_action_weight
         self.forces = forces
         self.min_height = min_height
         self.max_height = max_height
+
+        # needed to calculate accelerations
         self.prev_velocity = np.copy(self.sim.qvel())[:3]
+
+        # action offset so that the policy can learn faster and prevent standing on heels
+        self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
+                                0.0045, 0.0, 0.4973, -1.1997, -1.5968])
+        self.offset_weight = target_action_weight
 
         # Initialize Observation and Action Spaces (+1 is for speed input)
         self.observation_size = 40 + 1
@@ -63,8 +69,7 @@ class CassieEnv:
 
     def step_simulation(self, action):
         # Create Target Action
-        offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968, 0.0045, 0.0, 0.4973, -1.1997, -1.5968])
-        target = action + (self.target_action_weight * offset)
+        target = action + (self.offset_weight * self.offset)
 
         self.u = pd_in_t()
 
@@ -133,7 +138,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, rw=(0.3, 0.2, 0.2, 0.3)):
+    def compute_reward(self, rw=(0.25, 0.25, 0.25, 0.25), multiplier=5.):
         # Cassie weight properties
         gravity = 9.81
         mass = np.sum(self.sim.get_body_mass())
@@ -156,8 +161,8 @@ class CassieEnv:
 
         # A. Standing Rewards
         # 1. Upper Body Pose Modulation
-        pelvis_roll = np.exp(-qpos[4] ** 2)
-        pelvis_pitch = np.exp(-qpos[5] ** 2)
+        pelvis_roll = np.exp(-multiplier * qpos[4] ** 2)
+        pelvis_pitch = np.exp(-multiplier * qpos[5] ** 2)
 
         r_pose = 0.5 * pelvis_roll + 0.5 * pelvis_pitch
 
@@ -165,26 +170,29 @@ class CassieEnv:
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
                                   0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
-        xy_com_pos = np.exp(-(np.linalg.norm(xy_target_pos - qpos[:2])) ** 4)
+        xy_com_pos = np.exp(-multiplier * (np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
         z_target_pos = 0.9
-        z_com_pos = np.exp(-(z_target_pos - qpos[2]) ** 4)
+        z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 2)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        # 3a. Horizontal Velocity Component (desired CoM velocity is derived from capture point)
-        xy_target_vel = (xy_target_pos - qpos[:2]) / np.sqrt(qpos[2] / gravity)
-        xy_com_vel = np.exp(-np.linalg.norm(xy_target_vel - qvel[:2]) ** 2)
+        # # 3a. Horizontal Velocity Component (desired CoM velocity is derived from capture point)
+        # xy_target_vel = (xy_target_pos - qpos[:2]) / np.sqrt(qpos[2] / gravity)
+        # xy_com_vel = np.exp(-multiplier * np.linalg.norm(xy_target_vel - qvel[:2]) ** 2)
 
-        # 3b. Vertical Velocity Component (desired vertical CoM velocity is 0)
-        z_com_vel = np.exp(-qvel[2] ** 2)
+        # # 3b. Vertical Velocity Component (desired vertical CoM velocity is 0)
+        # z_com_vel = np.exp(-qvel[2] ** 2)
+        #
+        # # the reward term for horizontal CoM velocity is deemed invalid and is set to 0
+        # # when the robot is in the air (no foot contact)
+        # contact_weight = lambda w: w / (1 + np.exp((weight / 2) - np.linalg.norm(foot_grf)))
+        # r_com_vel = contact_weight(0.5) * xy_com_vel + (1. - contact_weight(0.5)) * z_com_vel
 
-        # the reward term for horizontal CoM velocity is deemed invalid and is set to 0
-        # when the robot is in the air (no foot contact)
-        contact_weight = lambda w: w / (1 + np.exp((weight / 2) - np.linalg.norm(foot_grf)))
-        r_com_vel = contact_weight(0.5) * xy_com_vel + (1. - contact_weight(0.5)) * z_com_vel
+        target_vel = np.array([0., 0., 0.])
+        r_com_vel = np.exp(-multiplier * np.linalg.norm(target_vel - qvel[:3]) ** 2)
 
         # 4. Ground Force Modulation
         # Fix: Foot forces are registering as a total of ~500N which doesn't make sense
@@ -194,8 +202,8 @@ class CassieEnv:
         grf_tolerance = 10
 
         target_grf = np.sum(foot_grf) / 2.
-        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
-        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 2)
+        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 4)
+        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 4)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
@@ -204,7 +212,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, cw=(0.3, 0.05, 0.2, 0.35, 0.1)):
+    def compute_cost(self, cw=(0.3, 0.2, 0.1, 0.4), multiplier=10.):
         # Cassie weight properties
         gravity = 9.81
         mass = np.sum(self.sim.get_body_mass())
@@ -229,26 +237,57 @@ class CassieEnv:
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
 
         # 2. Power Consumption
-        joint_torques = np.array(self.cassie_state.motor.torque[:10])
-        joint_velocities = np.array(self.cassie_state.motor.velocity[:10])
-        c_power = 1 - np.exp(-np.linalg.norm(joint_torques * joint_velocities) ** 2)
+        # Specs taken from RoboDrive datasheet for ILM 115x50
+
+        # in Newton-meters
+        max_motor_torques = np.array([4.66, 4.66, 12.7, 12.7, 0.99,
+                                      4.66, 4.66, 12.7, 12.7, 0.99])
+
+        # in Watts
+        power_loss_at_max_torque = np.array([19.3, 19.3, 20.9, 20.9, 5.4,
+                                             19.3, 19.3, 20.9, 20.9, 5.4])
+
+        gear_ratios = np.array([25, 25, 16, 16, 50,
+                                25, 25, 16, 16, 50])
+
+        # calculate power loss constants
+        power_loss_constants = power_loss_at_max_torque / np.square(max_motor_torques)
+
+        # get output torques and velocities
+        output_torques = np.array(self.cassie_state.motor.torque[:10])
+        output_velocity = np.array(self.cassie_state.motor.velocity[:10])
+
+        # calculate input torques
+        input_torques = output_torques / gear_ratios
+
+        # get power loss of each motor
+        power_losses = power_loss_constants * np.square(input_torques)
+
+        # calculate motor power for each motor
+        motor_powers = np.amax(np.diag(output_torques).dot(output_velocity.reshape(10, 1)), initial=0, axis=1)
+
+        # estimate power
+        power_estimate = np.sum(motor_powers) + np.sum(power_losses)
+
+        power_threshold = 110  # Watts (Positive Work only)
+        c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Orientation (to prevent standing on heels or toes only)
         neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
                                         -0.6609396704367185, 0.663921021343526])
-        l_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("left-foot")) ** 2)
-        r_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("right-foot")) ** 2)
+        # l_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("left-foot")) ** 2)
+        # r_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("right-foot")) ** 2)
+
+        l_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("left-foot")) ** 2)
+        r_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("right-foot")) ** 2)
 
         c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
 
         # 4. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
-        # 5. Body Deviation from I.C.
-        c_body_deviation = 1 - np.exp(-np.linalg.norm(self.cassie_state.pelvis.position[:3]) ** 2)
-
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_orient + cw[3] * c_fall + cw[4] * c_body_deviation
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_orient + cw[3] * c_fall
 
         return cost
 
