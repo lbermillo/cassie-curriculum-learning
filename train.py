@@ -75,8 +75,10 @@ if __name__ == '__main__':
     # TD3 Specific Parameters
     parser.add_argument('--update_fq', type=int, default=2, dest='update_fq',
                         help='Policy update frequency (default=2)')
-    parser.add_argument('--noise', type=float, default=0.35, dest='noise',
+    parser.add_argument('--policy_noise', type=float, default=0.35,
                         help='Noise added to target networks during critic update (default=0.35)')
+    parser.add_argument('--expl_noise', type=float, default=0.1,
+                        help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
 
     # SAC Specific Parameters
     parser.add_argument('--alpha', type=float, default=0.2,
@@ -138,7 +140,7 @@ if __name__ == '__main__':
                   critic_lr=args.clr,
                   discount=args.discount,
                   tau=args.tau,
-                  policy_noise=args.noise,
+                  policy_noise=args.policy_noise,
                   random_action_steps=args.start_steps,
                   capacity=args.buffer,
                   batch_size=args.batch,
@@ -152,6 +154,7 @@ if __name__ == '__main__':
                 int(args.training_steps),
                 args.eps_steps,
                 args.eval_interval,
+                expl_noise=args.expl_noise,
                 filename='{}. {}/{}'.format(int(args.env + 1),
                                             envs[args.env][0],
                                             agent_id) if args.save else None, )
