@@ -126,7 +126,8 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_grf) - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_grf) - self.compute_cost(qpos,
+                                                                               foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -174,8 +175,8 @@ class CassieEnv:
         xy_com_pos = np.exp(-multiplier * (np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_target_pos = 1.01
-        z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 2)
+        z_target_pos = 1.
+        z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 4)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
@@ -195,16 +196,13 @@ class CassieEnv:
         target_vel = np.array([0., 0., 0.])
         r_com_vel = np.exp(-multiplier * np.linalg.norm(target_vel - qvel[:3]) ** 2)
 
-        # 4. Ground Force Modulation
-        # Fix: Foot forces are registering as a total of ~500N which doesn't make sense
-        # if Cassie's mass is ~33 kg, so instead of having the target_grf be weight / 2,
-        # it'll be np.sum(foot_grf) / 2 to signal even distribution. Also added grf tolerance
-        # b/c the agent is having a hard time learning this reward
+        # 4. Ground Force Modulation (Even Vertical Foot Force Distribution)
         grf_tolerance = 10
 
-        target_grf = np.sum(foot_grf) / 2.
-        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
-        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 2)
+        # GRF target discourages shear forces and incites even vertical foot force distribution
+        target_grf = np.array([0., 0., np.sum(foot_grf) / 2.])
+        left_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[:3]) / grf_tolerance) ** 2)
+        right_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[3:]) / grf_tolerance) ** 2)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
@@ -213,7 +211,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.2, 0.1, 0.4), multiplier=10.):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0., 0.4), multiplier=10.):
 
         # 1. Ground Contact
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
@@ -255,9 +253,13 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Orientation (to prevent standing on heels or toes only)
-        neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646, -0.6609396704367185, 0.663921021343526])
-        l_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("left-foot")) ** 2)
-        r_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("right-foot")) ** 2)
+        neutral_foot_orient = np.array(
+            [-0.24790886454547323, -0.24679713195445646, -0.6609396704367185, 0.663921021343526])
+
+        l_foot_orient_cost = 1 - np.exp(
+            -multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("left-foot")) ** 2)
+        r_foot_orient_cost = 1 - np.exp(
+            -multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("right-foot")) ** 2)
 
         c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
 

@@ -12,10 +12,12 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-from .cassiemujoco_ctypes import *
-import os
 import ctypes
+import os
+
 import numpy as np
+
+from .cassiemujoco_ctypes import *
 
 # Get base directory
 _dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -139,7 +141,7 @@ class CassieSim:
         y = state_out_t()
         force = np.zeros(12)
         self.foot_force(force)
-        return force[[2, 8]]
+        return force[[0, 1, 2, 6, 7, 8]]
 
     def get_dof_damping(self):
         ptr = cassie_sim_dof_damping(self.c)
