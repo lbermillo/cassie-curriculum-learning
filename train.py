@@ -101,20 +101,20 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EN{}S{}]{}'.format(envs[args.env][0],
-                                                                                                args.rcut,
-                                                                                                args.tw,
-                                                                                                args.algo.upper(),
-                                                                                                args.alr,
-                                                                                                args.clr,
-                                                                                                args.hidden,
-                                                                                                args.batch,
-                                                                                                args.tau,
-                                                                                                args.training_steps,
-                                                                                                args.eps_steps,
-                                                                                                args.expl_noise,
-                                                                                                args.seed,
-                                                                                                args.tag)
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}]{}'.format(envs[args.env][0],
+                                                                                                 args.rcut,
+                                                                                                 args.tw,
+                                                                                                 args.algo.upper(),
+                                                                                                 args.alr,
+                                                                                                 args.clr,
+                                                                                                 args.hidden,
+                                                                                                 args.batch,
+                                                                                                 args.tau,
+                                                                                                 int(args.training_steps),
+                                                                                                 args.eps_steps,
+                                                                                                 args.expl_noise,
+                                                                                                 args.seed,
+                                                                                                 args.tag)
 
     # create SummaryWriter instance to log information
     writer = SummaryWriter('runs/{}. {}/{}'.format(int(args.env + 1),

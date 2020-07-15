@@ -23,6 +23,13 @@ class CassieEnv:
         self.min_height = min_height
         self.max_height = max_height
 
+        # Cassie properties
+        self.mass = np.sum(self.sim.get_body_mass())
+        self.weight = self.mass * 9.81
+
+        # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
+        self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+
         # needed to calculate accelerations
         self.prev_velocity = np.copy(self.sim.qvel())[:3]
 
@@ -105,6 +112,13 @@ class CassieEnv:
         for _ in range(self.simrate):
             self.step_simulation(action)
 
+        # CoM Position and Velocity
+        qpos = np.copy(self.sim.qpos())
+        qvel = np.copy(self.sim.qvel())
+
+        # Foot Force
+        foot_grf = self.sim.get_foot_forces()
+
         # Current State
         state = self.get_full_state()
 
@@ -112,7 +126,7 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward() - self.compute_cost() if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_grf) - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -138,26 +152,13 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, rw=(0.25, 0.25, 0.25, 0.25), multiplier=5.):
-        # Cassie weight properties
-        gravity = 9.81
-        mass = np.sum(self.sim.get_body_mass())
-        weight = mass * gravity
-
-        # CoM Position and Velocity
-        qpos = np.copy(self.sim.qpos())
-        qvel = np.copy(self.sim.qvel())
-
+    def compute_reward(self, qpos, qvel, foot_grf, rw=(0.3, 0.2, 0.2, 0.3), multiplier=5.):
         # Foot Position
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
 
-        # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        foot_pos = np.concatenate([left_foot_pos - midfoot_offset[:3], right_foot_pos - midfoot_offset[3:]])
-
-        # Foot Force
-        foot_grf = self.sim.get_foot_forces()
+        # midfoot position
+        foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
         # A. Standing Rewards
         # 1. Upper Body Pose Modulation
@@ -173,7 +174,7 @@ class CassieEnv:
         xy_com_pos = np.exp(-multiplier * (np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_target_pos = 0.9
+        z_target_pos = 1.01
         z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 2)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
@@ -202,8 +203,8 @@ class CassieEnv:
         grf_tolerance = 10
 
         target_grf = np.sum(foot_grf) / 2.
-        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 4)
-        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 4)
+        left_grf = np.exp(-((target_grf - foot_grf[0]) / grf_tolerance) ** 2)
+        right_grf = np.exp(-((target_grf - foot_grf[1]) / grf_tolerance) ** 2)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
@@ -212,26 +213,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, cw=(0.3, 0.2, 0.1, 0.4), multiplier=10.):
-        # Cassie weight properties
-        gravity = 9.81
-        mass = np.sum(self.sim.get_body_mass())
-        weight = mass * gravity
-
-        # CoM Position and Velocity
-        qpos = np.copy(self.sim.qpos())
-        qvel = np.copy(self.sim.qvel())
-
-        # Foot Position
-        left_foot_pos = self.cassie_state.leftFoot.position[:]
-        right_foot_pos = self.cassie_state.rightFoot.position[:]
-
-        # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        foot_pos = np.concatenate([left_foot_pos - midfoot_offset[:3], right_foot_pos - midfoot_offset[3:]])
-
-        # Foot Force
-        foot_grf = self.sim.get_foot_forces()
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.2, 0.1, 0.4), multiplier=10.):
 
         # 1. Ground Contact
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
@@ -273,11 +255,7 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Orientation (to prevent standing on heels or toes only)
-        neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
-                                        -0.6609396704367185, 0.663921021343526])
-        # l_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("left-foot")) ** 2)
-        # r_foot_orient_cost = (1 - np.inner(neutral_foot_orient, self.sim.xquat("right-foot")) ** 2)
-
+        neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646, -0.6609396704367185, 0.663921021343526])
         l_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("left-foot")) ** 2)
         r_foot_orient_cost = 1 - np.exp(-multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("right-foot")) ** 2)
 
