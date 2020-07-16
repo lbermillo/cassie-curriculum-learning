@@ -153,7 +153,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_grf, rw=(0.3, 0.2, 0.2, 0.3), multiplier=5.):
+    def compute_reward(self, qpos, qvel, foot_grf, rw=(0.2, 0.1, 0.1, 0.3, 0.3), multiplier=5.):
         # Foot Position
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
@@ -206,8 +206,16 @@ class CassieEnv:
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
+        # 5. Imitation Reward
+        target_qpos = np.array([0.0, 0.0, 1.01, 1.0, 0.0, 0.0, 0.0, 0.0045, 0.0, 0.4973, 0.9784830934748516,
+                                -0.016399716640763992, 0.017869691242100763, -0.2048964597373501, -1.1997, 0.0, 1.4267,
+                                0.0, -1.5244, 1.5244, -1.5968, -0.0045, 0.0, 0.4973, 0.978614127766972,
+                                0.0038600557257107214, -0.01524022001550036, -0.20510296096975877, -1.1997, 0.0, 1.4267,
+                                0.0, -1.5244, 1.5244, -1.5968])
+        r_imitate = np.exp(-(np.linalg.norm(target_qpos - qpos)) ** 2)
+
         # Total Reward
-        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf
+        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf + rw[4] * r_imitate
 
         return reward
 
