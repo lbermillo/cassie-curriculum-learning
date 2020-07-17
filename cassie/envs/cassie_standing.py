@@ -153,10 +153,13 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_grf, rw=(0., 0., 0., 0., 1.), multiplier=5.):
+    def compute_reward(self, qpos, qvel, foot_grf, rw=(0., 0., 0., 0.), multiplier=5.):
         # Foot Position
-        left_foot_pos = self.cassie_state.leftFoot.position[:]
-        right_foot_pos = self.cassie_state.rightFoot.position[:]
+        foot_pos = np.zeros(6)
+        self.sim.foot_pos(foot_pos)
+
+        left_foot_pos = foot_pos[:3]
+        right_foot_pos = foot_pos[3:]
 
         # midfoot position
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
@@ -195,8 +198,10 @@ class CassieEnv:
 
         r_fp_orient = 0.5 * l_foot_orient + 0.5 * r_foot_orient
 
-        # 6. TODO: Feet Width Distance
-        feet_width = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
+        # 6. Feet Width Distance
+        target_width = 0.27
+        feet_width   = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
+        r_foot_width = np.exp(-np.linalg.norm(target_width - feet_width) ** 2)
 
         # 7. Ground Force Modulation (Even Vertical Foot Force Distribution)
         grf_tolerance = 10
@@ -207,7 +212,7 @@ class CassieEnv:
         right_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[3:]) / grf_tolerance) ** 2)
 
         # reward is only activated when both feet are down
-        r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] == 0. and foot_pos[5] == 0. else 0.
+        r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] < 2e-3 and foot_pos[5] < 2e-3 else 0.
 
         # Initial qpos for reference
         # Pelvis Position
@@ -231,8 +236,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0., 0.1, 0., 0.5), multiplier=10.):
-
+    def compute_cost(self, qpos, foot_grf, cw=(0., 0., 0., 0.), multiplier=10.):
         # 1. Ground Contact
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
 
