@@ -199,7 +199,6 @@ class CassieEnv:
         feet_width = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
 
         # 7. Ground Force Modulation (Even Vertical Foot Force Distribution)
-        # TODO: Condition when both feet are down vs only one is down
         grf_tolerance = 10
 
         # GRF target discourages shear forces and incites even vertical foot force distribution
@@ -207,20 +206,28 @@ class CassieEnv:
         left_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[:3]) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[3:]) / grf_tolerance) ** 2)
 
-        r_grf = 0.5 * left_grf + 0.5 * right_grf
+        # reward is only activated when both feet are down
+        r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] == 0. and foot_pos[5] == 0. else 0.
 
-        # 5. Imitation Reward
-        target_qpos = np.array([0.0, 0.0, 1.01, 1.0, 0.0, 0.0, 0.0,
-                                0.0045, 0.0, 0.4973,
-                                0.9784830934748516, -0.016399716640763992, 0.017869691242100763, -0.2048964597373501,
-                                -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968,
-                                -0.0045, 0.0, 0.4973,
-                                0.978614127766972, 0.0038600557257107214, -0.01524022001550036, -0.20510296096975877,
-                                -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968])
-        r_imitate = np.exp(-(np.linalg.norm(target_qpos - qpos)) ** 2)
+        # Initial qpos for reference
+        # Pelvis Position
+        # 0.0, 0.0, 1.01,
+
+        # Pelvis Orientation
+        # 1.0, 0.0, 0.0, 0.0,
+
+        # Left Leg
+        # 0.0045, 0.0, 0.4973,
+        # 0.9784830934748516, -0.016399716640763992, 0.017869691242100763, -0.2048964597373501,
+        # -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968,
+
+        # Right Leg
+        # -0.0045, 0.0, 0.4973,
+        # 0.978614127766972, 0.0038600557257107214, -0.01524022001550036, -0.20510296096975877,
+        # -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968
 
         # Total Reward
-        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf + rw[4] * r_imitate
+        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf
 
         return reward
 
