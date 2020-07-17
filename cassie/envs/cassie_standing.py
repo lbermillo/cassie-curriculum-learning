@@ -153,7 +153,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_grf, rw=(0.2, 0.1, 0.1, 0.3, 0.3), multiplier=5.):
+    def compute_reward(self, qpos, qvel, foot_grf, rw=(0., 0., 0., 0., 1.), multiplier=5.):
         # Foot Position
         left_foot_pos = self.cassie_state.leftFoot.position[:]
         right_foot_pos = self.cassie_state.rightFoot.position[:]
@@ -162,11 +162,11 @@ class CassieEnv:
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
         # A. Standing Rewards
-        # 1. Upper Body Pose Modulation
-        pelvis_roll = np.exp(-multiplier * qpos[4] ** 2)
-        pelvis_pitch = np.exp(-multiplier * qpos[5] ** 2)
+        # 1. Pelvis Orientation
+        r_pelvis_roll = np.exp(-qpos[4] ** 2)
+        r_pelvis_yaw = np.exp(-qpos[6] ** 2)
 
-        r_pose = 0.5 * pelvis_roll + 0.5 * pelvis_pitch
+        r_pose = 0.5 * r_pelvis_roll + 0.5 * r_pelvis_yaw
 
         # 2. CoM Position Modulation
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
@@ -175,28 +175,31 @@ class CassieEnv:
         xy_com_pos = np.exp(-multiplier * (np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_target_pos = 1.
+        z_target_pos = 0.9
         z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 4)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        # # 3a. Horizontal Velocity Component (desired CoM velocity is derived from capture point)
-        # xy_target_vel = (xy_target_pos - qpos[:2]) / np.sqrt(qpos[2] / gravity)
-        # xy_com_vel = np.exp(-multiplier * np.linalg.norm(xy_target_vel - qvel[:2]) ** 2)
-
-        # # 3b. Vertical Velocity Component (desired vertical CoM velocity is 0)
-        # z_com_vel = np.exp(-qvel[2] ** 2)
-        #
-        # # the reward term for horizontal CoM velocity is deemed invalid and is set to 0
-        # # when the robot is in the air (no foot contact)
-        # contact_weight = lambda w: w / (1 + np.exp((weight / 2) - np.linalg.norm(foot_grf)))
-        # r_com_vel = contact_weight(0.5) * xy_com_vel + (1. - contact_weight(0.5)) * z_com_vel
-
         target_vel = np.array([0., 0., 0.])
         r_com_vel = np.exp(-multiplier * np.linalg.norm(target_vel - qvel[:3]) ** 2)
 
-        # 4. Ground Force Modulation (Even Vertical Foot Force Distribution)
+        # 4. Feet Alignment
+        feet_x_pos = np.array([foot_pos[0], foot_pos[3]])
+        r_feet_align = np.exp(-np.linalg.norm(feet_x_pos) ** 2)
+
+        # 5. Foot/Pelvis Orientation
+        foot_yaw = np.array([qpos[8], qpos[22]])
+        l_foot_orient = np.exp(-np.linalg.norm(qpos[6] - foot_yaw[0]) ** 2)
+        r_foot_orient = np.exp(-np.linalg.norm(qpos[6] - foot_yaw[1]) ** 2)
+
+        r_fp_orient = 0.5 * l_foot_orient + 0.5 * r_foot_orient
+
+        # 6. TODO: Feet Width Distance
+        feet_width = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
+
+        # 7. Ground Force Modulation (Even Vertical Foot Force Distribution)
+        # TODO: Condition when both feet are down vs only one is down
         grf_tolerance = 10
 
         # GRF target discourages shear forces and incites even vertical foot force distribution
@@ -207,11 +210,13 @@ class CassieEnv:
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # 5. Imitation Reward
-        target_qpos = np.array([0.0, 0.0, 1.01, 1.0, 0.0, 0.0, 0.0, 0.0045, 0.0, 0.4973, 0.9784830934748516,
-                                -0.016399716640763992, 0.017869691242100763, -0.2048964597373501, -1.1997, 0.0, 1.4267,
-                                0.0, -1.5244, 1.5244, -1.5968, -0.0045, 0.0, 0.4973, 0.978614127766972,
-                                0.0038600557257107214, -0.01524022001550036, -0.20510296096975877, -1.1997, 0.0, 1.4267,
-                                0.0, -1.5244, 1.5244, -1.5968])
+        target_qpos = np.array([0.0, 0.0, 1.01, 1.0, 0.0, 0.0, 0.0,
+                                0.0045, 0.0, 0.4973,
+                                0.9784830934748516, -0.016399716640763992, 0.017869691242100763, -0.2048964597373501,
+                                -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968,
+                                -0.0045, 0.0, 0.4973,
+                                0.978614127766972, 0.0038600557257107214, -0.01524022001550036, -0.20510296096975877,
+                                -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968])
         r_imitate = np.exp(-(np.linalg.norm(target_qpos - qpos)) ** 2)
 
         # Total Reward
@@ -219,7 +224,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0., 0.4), multiplier=10.):
+    def compute_cost(self, qpos, foot_grf, cw=(0., 0.1, 0., 0.5), multiplier=10.):
 
         # 1. Ground Contact
         c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
