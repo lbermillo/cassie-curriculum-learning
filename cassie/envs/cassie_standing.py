@@ -243,7 +243,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0., 0., 0., 0.), multiplier=10.):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0., 0., 0., 0.)):
         # 1. Ground Contact
         c_contact = np.exp(-np.sum(foot_grf) ** 2)
 
