@@ -116,7 +116,11 @@ class CassieEnv:
         qpos = np.copy(self.sim.qpos())
         qvel = np.copy(self.sim.qvel())
 
-        # Foot Force
+        # Foot Positions
+        foot_pos = np.zeros(6)
+        self.sim.foot_pos(foot_pos)
+
+        # Foot Forces
         foot_grf = self.sim.get_foot_forces()
 
         # Current State
@@ -126,8 +130,8 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_grf) - self.compute_cost(qpos,
-                                                                               foot_grf) if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
+                 - self.compute_cost(qpos, foot_pos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -153,11 +157,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_grf, rw=(0., 0., 0., 0.), multiplier=5.):
-        # Foot Position
-        foot_pos = np.zeros(6)
-        self.sim.foot_pos(foot_pos)
-
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.15, 0.1, 0.1, 0.3, 0.2, 0.15), multiplier=5.):
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
 
@@ -175,41 +175,43 @@ class CassieEnv:
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
                                   0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
-        xy_com_pos = np.exp(-multiplier * (np.linalg.norm(xy_target_pos - qpos[:2])) ** 2)
+        xy_com_pos = np.exp(-np.sum(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
         z_target_pos = 0.9
-        z_com_pos = np.exp(-multiplier * (z_target_pos - qpos[2]) ** 4)
+        z_com_pos = np.exp(-(qpos[2] - z_target_pos) ** 4)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        target_vel = np.array([0., 0., 0.])
-        r_com_vel = np.exp(-multiplier * np.linalg.norm(target_vel - qvel[:3]) ** 2)
+        r_com_vel = np.exp(-multiplier * np.sum(qvel[:3]) ** 2)
 
-        # 4. Feet Alignment
+        # 4. Foot Placement
+        # 4a. Foot Alignment
         feet_x_pos = np.array([foot_pos[0], foot_pos[3]])
-        r_feet_align = np.exp(-np.linalg.norm(feet_x_pos) ** 2)
+        r_feet_align = np.exp(-np.sum(np.abs(feet_x_pos)) ** 2)
+
+        # 4b. Feet Width
+        target_width = 0.2695434287408531
+        feet_width = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
+        r_foot_width = np.exp(-np.sum(feet_width - target_width) ** 2)
+
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         foot_yaw = np.array([qpos[8], qpos[22]])
-        l_foot_orient = np.exp(-np.linalg.norm(qpos[6] - foot_yaw[0]) ** 2)
-        r_foot_orient = np.exp(-np.linalg.norm(qpos[6] - foot_yaw[1]) ** 2)
+        left_foot_orient = np.exp(-np.sum(foot_yaw[0] - qpos[6]) ** 2)
+        right_foot_orient = np.exp(-np.sum(foot_yaw[1] - qpos[6]) ** 2)
 
-        r_fp_orient = 0.5 * l_foot_orient + 0.5 * r_foot_orient
-
-        # 6. Feet Width Distance
-        target_width = 0.27
-        feet_width   = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
-        r_foot_width = np.exp(-np.linalg.norm(target_width - feet_width) ** 2)
+        r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
         # 7. Ground Force Modulation (Even Vertical Foot Force Distribution)
         grf_tolerance = 10
 
         # GRF target discourages shear forces and incites even vertical foot force distribution
         target_grf = np.array([0., 0., np.sum(foot_grf) / 2.])
-        left_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[:3]) / grf_tolerance) ** 2)
-        right_grf = np.exp(-(np.linalg.norm(target_grf - foot_grf[3:]) / grf_tolerance) ** 2)
+        left_grf = np.exp(-(np.sum(foot_grf[:3] - target_grf) / grf_tolerance) ** 2)
+        right_grf = np.exp(-(np.sum(foot_grf[3:] - target_grf) / grf_tolerance) ** 2)
 
         # reward is only activated when both feet are down
         r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] < 2e-3 and foot_pos[5] < 2e-3 else 0.
@@ -232,13 +234,18 @@ class CassieEnv:
         # -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968
 
         # Total Reward
-        reward = rw[0] * r_pose + rw[1] * r_com_pos + rw[2] * r_com_vel + rw[3] * r_grf
+        reward = (rw[0] * r_pose
+                  + rw[1] * r_com_pos
+                  + rw[2] * r_com_vel
+                  + rw[3] * r_foot_placement
+                  + rw[4] * r_fp_orient
+                  + rw[5] * r_grf)
 
         return reward
 
     def compute_cost(self, qpos, foot_grf, cw=(0., 0., 0., 0.), multiplier=10.):
         # 1. Ground Contact
-        c_contact = np.exp(-np.linalg.norm(foot_grf) ** 2)
+        c_contact = np.exp(-np.sum(foot_grf) ** 2)
 
         # 2. Power Consumption
         # Specs taken from RoboDrive datasheet for ILM 115x50
@@ -276,22 +283,17 @@ class CassieEnv:
         power_threshold = 110  # Watts (Positive Work only)
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
-        # 3. Foot Orientation (to prevent standing on heels or toes only)
-        neutral_foot_orient = np.array(
-            [-0.24790886454547323, -0.24679713195445646, -0.6609396704367185, 0.663921021343526])
+        # 3. Foot Dragging
+        left_foot_shear_forces = 1 - np.exp(-np.sum(foot_grf[:2]) ** 2)
+        right_foot_shear_forces = 1 - np.exp(-np.sum(foot_grf[4:]) ** 2)
 
-        l_foot_orient_cost = 1 - np.exp(
-            -multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("left-foot")) ** 2)
-        r_foot_orient_cost = 1 - np.exp(
-            -multiplier * np.linalg.norm(neutral_foot_orient - self.sim.xquat("right-foot")) ** 2)
-
-        c_foot_orient = 0.5 * l_foot_orient_cost + 0.5 * r_foot_orient_cost
+        c_foot_drag = 1 - np.exp(-np.sum(foot_grf[:2]) ** 2)
 
         # 4. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_orient + cw[3] * c_fall
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_foot_drag + cw[3] * c_fall
 
         return cost
 
