@@ -284,8 +284,8 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Dragging
-        left_drag_cost  = 1. if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
-        right_drag_cost = 1. if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
+        left_drag_cost  = np.exp(-foot_pos[2] ** 2) if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
+        right_drag_cost = np.exp(-foot_pos[5] ** 2) if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
 
         c_foot_drag = 0.5 * left_drag_cost + 0.5 * right_drag_cost
 
