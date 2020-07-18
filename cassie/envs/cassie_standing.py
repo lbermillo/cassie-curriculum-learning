@@ -167,9 +167,10 @@ class CassieEnv:
         # A. Standing Rewards
         # 1. Pelvis Orientation
         r_pelvis_roll = np.exp(-qpos[4] ** 2)
+        r_pelvis_pitch = np.exp(-qpos[5] ** 2)
         r_pelvis_yaw = np.exp(-qpos[6] ** 2)
 
-        r_pose = 0.5 * r_pelvis_roll + 0.5 * r_pelvis_yaw
+        r_pose = 0.335 * r_pelvis_roll + 0.33 * r_pelvis_pitch + 0.335 * r_pelvis_yaw
 
         # 2. CoM Position Modulation
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
