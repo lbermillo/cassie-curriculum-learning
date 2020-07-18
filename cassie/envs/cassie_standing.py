@@ -244,9 +244,9 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.3, 0.3)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.2, 0.4)):
         # 1. Ground Contact
-        c_contact = 1. if foot_grf[2] == 0. or foot_grf[5] == 0. else 0.
+        c_contact = 1. if np.sum(foot_grf[2], foot_grf[5]) == 0. else 0.
 
         # 2. Power Consumption
         # Specs taken from RoboDrive datasheet for ILM 115x50
