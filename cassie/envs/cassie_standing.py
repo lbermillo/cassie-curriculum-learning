@@ -243,9 +243,9 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0., 0., 0., 0.)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.3, 0.3)):
         # 1. Ground Contact
-        c_contact = np.exp(-np.sum(foot_grf) ** 2)
+        c_contact = 1. if foot_grf[2] == 0. or foot_grf[5] == 0. else 0.
 
         # 2. Power Consumption
         # Specs taken from RoboDrive datasheet for ILM 115x50
@@ -284,10 +284,10 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Dragging
-        left_foot_shear_forces = 1 - np.exp(-np.sum(foot_grf[:2]) ** 2)
-        right_foot_shear_forces = 1 - np.exp(-np.sum(foot_grf[4:]) ** 2)
+        left_drag_cost  = 1. if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
+        right_drag_cost = 1. if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
 
-        c_foot_drag = 1 - np.exp(-np.sum(foot_grf[:2]) ** 2)
+        c_foot_drag = 0.5 * left_drag_cost + 0.5 * right_drag_cost
 
         # 4. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
