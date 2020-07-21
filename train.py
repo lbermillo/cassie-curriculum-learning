@@ -20,8 +20,8 @@ if __name__ == '__main__':
                         help='Disables clock and uses reference trajectories')
     parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
                         help='Disables state estimator')
-    parser.add_argument('--rcut', '-r', type=float, default=0.3, dest='rcut',
-                        help='Ends an episode if a step reward falls below this threshold (default: 0.3)')
+    parser.add_argument('--rcut', '-r', type=float, default=0.5, dest='rcut',
+                        help='Ends an episode if a step reward falls below this threshold (default: 0.5)')
     parser.add_argument('--tw', type=float, default=1.,
                         help='Weight multiplied to the action offset added to the policy action (default: 0.0)')
     parser.add_argument('--forces', '-f', nargs='+', type=float, default=(0., 0., 0.),

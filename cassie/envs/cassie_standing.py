@@ -7,8 +7,9 @@ from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 # Creating the Standing Environment
 class CassieEnv:
 
-    def __init__(self, simrate=60, clock_based=True, state_est=True, reward_cutoff=0.3, target_action_weight=1.0,
-                 forces=(0, 0, 0), min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml"):
+    def __init__(self, simrate=60, clock_based=True, state_est=True,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0),
+                 min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml"):
 
         # Using CassieSim
         self.config = config
@@ -22,6 +23,7 @@ class CassieEnv:
         self.forces = forces
         self.min_height = min_height
         self.max_height = max_height
+        self.target_height = target_height
 
         # Cassie properties
         self.mass = np.sum(self.sim.get_body_mass())
@@ -157,7 +159,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0., 0.2, 0.2, 0.2, 0.2, 0.), multiplier=5.):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0., 0., 0., 0., 0., 0., 1.), multiplier=5.):
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
 
@@ -178,21 +180,21 @@ class CassieEnv:
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (np.abs(foot_pos[0]) + np.abs(foot_pos[3])),
                                   0.5 * (np.abs(foot_pos[1]) + np.abs(foot_pos[4]))])
-        xy_com_pos = np.exp(-np.sum(qpos[:2] - xy_target_pos) ** 2)
+        xy_com_pos = np.exp(-np.sum(qpos[:2] - xy_target_pos) ** 4)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_target_pos = 0.9
+        z_target_pos = self.target_height
         z_com_pos = np.exp(-(qpos[2] - z_target_pos) ** 4)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        r_com_vel = np.exp(-multiplier * np.sum(qvel[:3]) ** 2)
+        r_com_vel = np.exp(-multiplier * np.sum(qvel[:3]) ** 4)
 
         # 4. Foot Placement
         # 4a. Foot Alignment
         feet_x_pos = np.array([foot_pos[0], foot_pos[3]])
-        r_feet_align = np.exp(-np.sum(np.abs(feet_x_pos)) ** 2)
+        r_feet_align = np.exp(-np.sum(np.abs(feet_x_pos)) ** 4)
 
         # 4b. Feet Width
         target_width = 0.2695434287408531
@@ -213,8 +215,8 @@ class CassieEnv:
 
         # GRF target discourages shear forces and incites even vertical foot force distribution
         target_grf = np.array([0., 0., np.sum(foot_grf) / 2.])
-        left_grf = np.exp(-(np.sum(foot_grf[:3] - target_grf) / grf_tolerance) ** 2)
-        right_grf = np.exp(-(np.sum(foot_grf[3:] - target_grf) / grf_tolerance) ** 2)
+        left_grf = np.exp(-(np.sum(foot_grf[:3] - target_grf) / grf_tolerance) ** 4)
+        right_grf = np.exp(-(np.sum(foot_grf[3:] - target_grf) / grf_tolerance) ** 4)
 
         # reward is only activated when both feet are down
         r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] < 2e-3 and foot_pos[5] < 2e-3 else 0.
@@ -258,7 +260,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0., 0.1, 0., 0.4)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0., 0.4)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
@@ -299,8 +301,8 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Dragging
-        left_drag_cost  = 1. if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
-        right_drag_cost = 1. if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
+        left_drag_cost  = 1. if foot_grf[2] > 0. and (np.abs(foot_grf[0]) + np.abs(foot_grf[1])) > 5 else 0.
+        right_drag_cost = 1. if foot_grf[5] > 0. and (np.abs(foot_grf[0]) + np.abs(foot_grf[1])) > 5 else 0.
 
         c_foot_drag = 0.5 * left_drag_cost + 0.5 * right_drag_cost
 
