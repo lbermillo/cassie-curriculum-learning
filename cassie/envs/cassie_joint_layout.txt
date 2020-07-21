@@ -37,6 +37,7 @@ qpos layout
     [ 4] Pelvis orientation qx
     [ 5] Pelvis orientation qy
     [ 6] Pelvis orientation qz
+
     [ 7] Left hip roll         (Motor [0])
     [ 8] Left hip yaw          (Motor [1])
     [ 9] Left hip pitch        (Motor [2])

@@ -157,7 +157,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.15, 0.1, 0.1, 0.3, 0.2, 0.15), multiplier=5.):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0., 0.2, 0.2, 0.2, 0.2, 0.), multiplier=5.):
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
 
@@ -166,11 +166,13 @@ class CassieEnv:
 
         # A. Standing Rewards
         # 1. Pelvis Orientation
-        r_pelvis_roll = np.exp(-qpos[4] ** 2)
-        r_pelvis_pitch = np.exp(-qpos[5] ** 2)
-        r_pelvis_yaw = np.exp(-qpos[6] ** 2)
+        # r_pelvis_roll = np.exp(-qpos[4] ** 2)
+        # r_pelvis_pitch = np.exp(-qpos[5] ** 2)
+        # r_pelvis_yaw = np.exp(-qpos[6] ** 2)
+        #
+        # r_pose = 0.335 * r_pelvis_roll + 0.33 * r_pelvis_pitch + 0.335 * r_pelvis_yaw
 
-        r_pose = 0.335 * r_pelvis_roll + 0.33 * r_pelvis_pitch + 0.335 * r_pelvis_yaw
+        r_pose = np.exp(-np.sum(qpos[4:7]) ** 2)
 
         # 2. CoM Position Modulation
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
@@ -195,7 +197,7 @@ class CassieEnv:
         # 4b. Feet Width
         target_width = 0.2695434287408531
         feet_width = np.abs(foot_pos[1]) + np.abs(foot_pos[4])
-        r_foot_width = np.exp(-np.sum(feet_width - target_width) ** 2)
+        r_foot_width = np.exp(-np.sum(feet_width - target_width) ** 4)
 
         r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
@@ -216,6 +218,17 @@ class CassieEnv:
 
         # reward is only activated when both feet are down
         r_grf = 0.5 * left_grf + 0.5 * right_grf if foot_pos[2] < 2e-3 and foot_pos[5] < 2e-3 else 0.
+
+        # 8. Imitation Reward
+        target_pos = np.array([0.0, 0.0, 1.01,
+                               1.0, 0.0, 0.0, 0.0,
+                               0.0045, 0.0, 0.4973,
+                               0.9784830934748516, -0.016399716640763992, 0.017869691242100763, -0.2048964597373501,
+                               -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968,
+                               -0.0045, 0.0, 0.4973,
+                               0.978614127766972, 0.0038600557257107214, -0.01524022001550036, -0.20510296096975877,
+                               -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968])
+        r_imitation = np.exp(-np.linalg.norm(qpos - target_pos) ** 4)
 
         # Initial qpos for reference
         # Pelvis Position
@@ -240,11 +253,12 @@ class CassieEnv:
                   + rw[2] * r_com_vel
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient
-                  + rw[5] * r_grf)
+                  + rw[5] * r_grf
+                  + rw[6] * r_imitation)
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.2, 0.4)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0., 0.1, 0., 0.4)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
@@ -281,12 +295,12 @@ class CassieEnv:
         # estimate power
         power_estimate = np.sum(motor_powers) + np.sum(power_losses)
 
-        power_threshold = 110  # Watts (Positive Work only)
+        power_threshold = 100  # Watts (Positive Work only)
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Foot Dragging
-        left_drag_cost  = np.exp(-foot_pos[2] ** 2) if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
-        right_drag_cost = np.exp(-foot_pos[5] ** 2) if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
+        left_drag_cost  = 1. if foot_grf[2] > 0. and np.sum(foot_grf[:2])  != 0. else 0.
+        right_drag_cost = 1. if foot_grf[5] > 0. and np.sum(foot_grf[3:5]) != 0. else 0.
 
         c_foot_drag = 0.5 * left_drag_cost + 0.5 * right_drag_cost
 
