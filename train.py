@@ -20,8 +20,10 @@ if __name__ == '__main__':
                         help='Disables clock and uses reference trajectories')
     parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
                         help='Disables state estimator')
-    parser.add_argument('--rcut', '-r', type=float, default=0.5, dest='rcut',
-                        help='Ends an episode if a step reward falls below this threshold (default: 0.5)')
+    parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.5], dest='rcut',
+                        help='Ends an episode if a step reward falls below this threshold. '
+                             'Enter two values [initial, final] cutoff to activate termination curriculum '
+                             '(default: 0.5)')
     parser.add_argument('--tw', type=float, default=1.,
                         help='Weight multiplied to the action offset added to the policy action (default: 0.0)')
     parser.add_argument('--forces', '-f', nargs='+', type=float, default=(0., 0., 0.),
@@ -125,7 +127,7 @@ if __name__ == '__main__':
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
                             state_est=args.state_est,
-                            reward_cutoff=args.rcut,
+                            reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             forces=args.forces,
                             config=args.config)
@@ -151,6 +153,7 @@ if __name__ == '__main__':
                   policy_update_freq=args.update_fq,
                   chkpt_pth=args.load,
                   init_weights=args.network_init,
+                  termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
                   writer=writer)
 
     # run training
