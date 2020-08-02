@@ -159,7 +159,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0),
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.1, 0.15, 0.15, 0.25, 0.2, 0.15, 0),
                        multiplier=500):
 
         left_foot_pos = foot_pos[:3]
@@ -211,7 +211,10 @@ class CassieEnv:
         # 4c. Foot Height
         r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
 
-        r_foot_placement = 0.33 * r_feet_align + 0.33 * r_foot_width + 0.34 * r_foot_height
+        # 4d. Foot Velocity
+        r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
+
+        r_foot_placement = 0.25 * r_feet_align + 0.25 * r_foot_width + 0.25 * r_foot_height + 0.25 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
         foot_yaw = np.array([qpos[8], qpos[22]])
@@ -265,7 +268,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0., 0.1, 0., 0.5)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0., 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
