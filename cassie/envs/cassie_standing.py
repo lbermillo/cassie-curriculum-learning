@@ -30,7 +30,8 @@ class CassieEnv:
         self.weight = self.mass * 9.81
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        self.midfoot_offset = np.array([0.125, 0.05219, 0., 0.125, -0.05219, 0.])
 
         # needed to calculate accelerations
         self.prev_velocity = np.copy(self.sim.qvel())[:3]
@@ -159,7 +160,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.1, 0.15, 0.15, 0.25, 0.2, 0.15, 0),
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0),
                        multiplier=500):
 
         left_foot_pos = foot_pos[:3]
@@ -214,7 +215,7 @@ class CassieEnv:
         # 4d. Foot Velocity
         r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
 
-        r_foot_placement = 0.25 * r_feet_align + 0.25 * r_foot_width + 0.25 * r_foot_height + 0.25 * r_foot_vel
+        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
         foot_yaw = np.array([qpos[8], qpos[22]])
@@ -268,7 +269,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0., 0.5)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.2, 0.1, 0., 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
@@ -305,7 +306,7 @@ class CassieEnv:
         # estimate power
         power_estimate = np.sum(motor_powers) + np.sum(power_losses)
 
-        power_threshold = 150  # Watts (Positive Work only)
+        power_threshold = 125  # Watts (Positive Work only)
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Smooth Torques Cost
@@ -346,6 +347,17 @@ class CassieEnv:
                 self.cassie_state.joint.position[:],  # unactuated joint positions
                 self.cassie_state.joint.velocity[:]  # unactuated joint velocities
             ])
+
+            # robot_state = np.concatenate([
+            #     self.cassie_state.pelvis.orientation[:],  # pelvis orientation
+            #     self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
+            #
+            #     self.cassie_state.motor.position[:],  # actuated joint positions
+            #     self.cassie_state.motor.velocity[:],  # actuated joint velocities
+            #
+            #     self.cassie_state.joint.position[:],  # unactuated joint positions
+            #     self.cassie_state.joint.velocity[:]  # unactuated joint velocities
+            # ])
 
             # Concatenate robot_state to ext_state
             ext_state = np.concatenate((robot_state, ext_state))
