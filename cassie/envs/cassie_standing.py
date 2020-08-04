@@ -31,7 +31,7 @@ class CassieEnv:
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
         # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        self.midfoot_offset = np.array([0.125, 0.05219, 0., 0.125, -0.05219, 0.])
+        self.midfoot_offset = np.array([0.15, 0.05219, 0., 0.15, -0.05219, 0.])
 
         # needed to calculate accelerations
         self.prev_velocity = np.copy(self.sim.qvel())[:3]
@@ -269,7 +269,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.2, 0.1, 0., 0.5)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0., 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
@@ -306,7 +306,7 @@ class CassieEnv:
         # estimate power
         power_estimate = np.sum(motor_powers) + np.sum(power_losses)
 
-        power_threshold = 125  # Watts (Positive Work only)
+        power_threshold = 150  # Watts (Positive Work only)
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Smooth Torques Cost
