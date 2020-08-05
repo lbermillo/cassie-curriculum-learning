@@ -23,8 +23,8 @@ from .cassiemujoco_ctypes import *
 _dir_path = os.path.dirname(os.path.realpath(__file__))
 
 # Initialize libcassiesim
-# cassie_mujoco_init(str.encode(_dir_path+"/cassie.xml"))
-cassie_mujoco_init(str.encode(_dir_path+"/cassie_hfield.xml"))
+cassie_mujoco_init(str.encode(_dir_path+"/cassie.xml"))
+# cassie_mujoco_init(str.encode(_dir_path+"/cassie_hfield.xml"))
 # cassie_mujoco_init(str.encode("../model/cassie_hfield.xml"))
 
 
