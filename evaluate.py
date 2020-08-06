@@ -30,6 +30,8 @@ if __name__ == "__main__":
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Start initial positions from different phases (default: False)')
 
     # Evaluation parameters
     parser.add_argument('--eval_episodes', type=int, default=10,
@@ -54,14 +56,15 @@ if __name__ == "__main__":
     # create envs list
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
-    # initialize environment
+    # TODO: initialize environment (Standing has other parameters like use_phase)
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
                             state_est=args.state_est,
                             reward_cutoff=args.rcut,
                             target_action_weight=args.tw,
                             forces=args.forces,
-                            config=args.config)
+                            config=args.config,
+                            use_phase=args.use_phase)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]

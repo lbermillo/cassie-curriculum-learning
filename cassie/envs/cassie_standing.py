@@ -1,15 +1,19 @@
+import os
+import random
+from math import floor
+
 import gym
 import numpy as np
-
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
+from cassie.trajectory import CassieTrajectory
 
 
 # Creating the Standing Environment
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0),
-                 min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml"):
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), use_phase=False,
+                 min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -32,9 +36,6 @@ class CassieEnv:
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
         # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
         self.midfoot_offset = np.array([0.15, 0.05219, 0., 0.15, -0.05219, 0.])
-
-        # needed to calculate accelerations
-        self.prev_velocity = np.copy(self.sim.qvel())[:3]
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -63,6 +64,21 @@ class CassieEnv:
         self.cassie_state = state_out_t()
         self.simrate = simrate
         self.speed = 0
+        self.use_phase = use_phase
+
+        if self.use_phase:
+            dirname = os.path.dirname(__file__)
+            if traj == "walking":
+                traj_path = os.path.join(dirname, "..", "trajectory", "stepdata.bin")
+
+            elif traj == "stepping":
+                # traj_path = os.path.join(dirname, "trajectory", "spline_stepping_traj.pkl")
+                traj_path = os.path.join(dirname, "..", "trajectory", "more-poses-trial.bin")
+
+            self.trajectory = CassieTrajectory(traj_path)
+
+            self.phase = 0  # portion of the phase the robot is in
+            self.phaselen = floor(len(self.trajectory) / self.simrate) - 1
 
         # See include/cassiemujoco.h for meaning of these indices
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
@@ -141,9 +157,18 @@ class CassieEnv:
 
         return state, reward, done, {}
 
-    def reset(self):
-        self.sim.full_reset()
-        self.reset_cassie_state()
+    def reset(self, phase=None):
+        if self.use_phase:
+            self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
+
+            # get the corresponding state from the reference trajectory for the current phase
+            qpos, qvel = self.get_ref_state(self.phase)
+
+            self.sim.set_qpos(qpos)
+            self.sim.set_qvel(qvel)
+        else:
+            self.sim.full_reset()
+            self.reset_cassie_state()
 
         return self.get_full_state()
 
@@ -319,6 +344,36 @@ class CassieEnv:
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_smooth_actions + cw[3] * c_fall
 
         return cost
+
+    def get_ref_state(self, phase=None):
+        if phase is None:
+            phase = self.phase
+
+        if phase > self.phaselen:
+            phase = 0
+
+        pos = np.copy(self.trajectory.qpos[phase * self.simrate])
+
+        # this is just setting the x to where it "should" be given the number
+        # of cycles
+        # pos[0] += (self.trajectory.qpos[-1, 0] - self.trajectory.qpos[0, 0]) * self.counter
+
+        # ^ should only matter for COM error calculation,
+        # gets dropped out of state variable for input reasons
+
+        ###### Setting variable speed  #########
+        pos[0] *= self.speed
+        pos[0] += (self.trajectory.qpos[-1, 0] - self.trajectory.qpos[0, 0]) * self.speed
+        ######                          ########
+
+        # setting lateral distance target to 0?
+        # regardless of reference trajectory?
+        pos[1] = 0
+
+        vel = np.copy(self.trajectory.qvel[phase * self.simrate])
+        vel[0] *= self.speed
+
+        return pos, vel
 
     def get_full_state(self):
 

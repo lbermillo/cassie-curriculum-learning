@@ -31,6 +31,8 @@ if __name__ == '__main__':
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Start initial positions from different phases (default: False)')
 
     # Training parameters
     parser.add_argument('--training_steps', type=float, default=1e6,
@@ -103,20 +105,21 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}]{}'.format(envs[args.env][0],
-                                                                                                 args.rcut,
-                                                                                                 args.tw,
-                                                                                                 args.algo.upper(),
-                                                                                                 args.alr,
-                                                                                                 args.clr,
-                                                                                                 args.hidden,
-                                                                                                 args.batch,
-                                                                                                 args.tau,
-                                                                                                 int(args.training_steps),
-                                                                                                 args.eps_steps,
-                                                                                                 args.expl_noise,
-                                                                                                 args.seed,
-                                                                                                 args.tag)
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}]{}'.format(envs[args.env][0],
+                                                                                                      args.rcut,
+                                                                                                      args.tw,
+                                                                                                      args.algo.upper(),
+                                                                                                      args.alr,
+                                                                                                      args.clr,
+                                                                                                      args.hidden,
+                                                                                                      args.batch,
+                                                                                                      args.tau,
+                                                                                                      int(args.training_steps),
+                                                                                                      args.eps_steps,
+                                                                                                      args.expl_noise,
+                                                                                                      args.seed,
+                                                                                                      args.use_phase,
+                                                                                                      args.tag)
 
     # create SummaryWriter instance to log information
     writer = SummaryWriter('runs/{}. {}/{}'.format(int(args.env + 1),
@@ -130,7 +133,8 @@ if __name__ == '__main__':
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             forces=args.forces,
-                            config=args.config)
+                            config=args.config,
+                            use_phase=args.use_phase)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
