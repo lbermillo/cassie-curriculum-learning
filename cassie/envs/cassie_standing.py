@@ -1,11 +1,12 @@
 import os
-import random
-from math import floor
-
 import gym
+import random
 import numpy as np
-from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
+
+from math import floor
+from cassie.quaternion_function import *
 from cassie.trajectory import CassieTrajectory
+from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
 # Creating the Standing Environment
@@ -203,32 +204,43 @@ class CassieEnv:
         r_pose = np.exp(-1000 * pose_error ** 2)
 
         # 2. CoM Position Modulation
-
-        # TODO: Is this still needed? Seemed to work on some policies but clashes with other rewards
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
+
         xy_com_pos = np.exp(-np.sum(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
+        height_thresh = 0.1  # m = 10 cm
         z_target_pos = self.target_height
-        z_com_pos = 1. if z_target_pos - 0.1 < qpos[2] < z_target_pos + 0.1 \
-            else np.exp(-10 * (qpos[2] - z_target_pos) ** 2)
+
+        if qpos[2] < z_target_pos - height_thresh:
+            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
+        elif qpos[2] > z_target_pos + 0.1:
+            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
+        else:
+            z_com_pos = 1.
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        r_com_vel = np.exp(-np.linalg.norm(qvel[:3], 1) ** 2)
+        r_com_vel = np.exp(-np.linalg.norm(qvel[:3]) ** 2)
 
         # 4. Foot Placement
         # 4a. Foot Alignment
         r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        target_width = 0.16
-        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]], 1)
-        r_foot_width = 1. if target_width - 0.01 < feet_width < target_width + 0.03 \
-            else np.exp(-multiplier * (feet_width - target_width) ** 2)
+        width_thresh = 0.0254 # m = 2.54 cm = 1 in
+        target_width = 0.16  # m = 16 cm
+        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
+
+        if feet_width < target_width - width_thresh:
+            r_foot_width = np.exp(-multiplier * (feet_width - (target_width - width_thresh)) ** 2)
+        elif feet_width > target_width + width_thresh:
+            r_foot_width = np.exp(-multiplier * (feet_width - (target_width + width_thresh)) ** 2)
+        else:
+            r_foot_width = 1.
 
         # 4c. Foot Height
         r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
@@ -239,16 +251,14 @@ class CassieEnv:
         r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
+        _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
         foot_yaw = np.array([qpos[8], qpos[22]])
         left_foot_orient = np.exp(-multiplier * (foot_yaw[0] - qpos[6]) ** 2)
         right_foot_orient = np.exp(-multiplier * (foot_yaw[1] - qpos[6]) ** 2)
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
-        # TODO: 6.Leg Symmetry Reward
-        # r_symmetry = np.exp(-(qpos[7:21] - qpos[21:]) ** 2)
-
-        # 7. Ground Force Modulation (Even Vertical Foot Force Distribution)
+        # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
         # TODO: How to incentivize to step rather than drag?
         # GRF target discourages shear forces and incites even vertical foot force distribution
         target_grf = (foot_grf[2] + foot_grf[5]) / 2.
@@ -278,8 +288,6 @@ class CassieEnv:
                   + rw[5] * r_grf
                   + rw[6] * r_target_joint_pos)
 
-        # ./train.py -r 0.3 --eps_steps 30 --training_steps 1e6 --save --tensorboard --tag "TargetPosition[]"
-
         print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
                                                                                                                r_com_pos,
                                                                                                                r_com_vel,
@@ -290,7 +298,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0., 0.5)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
 
@@ -330,14 +338,11 @@ class CassieEnv:
         power_threshold = 150  # Watts (Positive Work only)
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
-        # 3. Smooth Torques Cost
-        c_smooth_actions = 1 - np.exp(-np.sum(input_torques) ** 2)
-
-        # 4. Falling
+        # 3. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_smooth_actions + cw[3] * c_fall
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
 
         return cost
 
