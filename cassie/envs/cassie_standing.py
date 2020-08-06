@@ -1,12 +1,12 @@
 import os
-import gym
 import random
-import numpy as np
-
 from math import floor
-from cassie.quaternion_function import *
-from cassie.trajectory import CassieTrajectory
+
+import gym
+import numpy as np
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
+from cassie.quaternion_function import quaternion2euler
+from cassie.trajectory import CassieTrajectory
 
 
 # Creating the Standing Environment
@@ -259,8 +259,6 @@ class CassieEnv:
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
         # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
-        # TODO: How to incentivize to step rather than drag?
-        # GRF target discourages shear forces and incites even vertical foot force distribution
         target_grf = (foot_grf[2] + foot_grf[5]) / 2.
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
