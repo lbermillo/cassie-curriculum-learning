@@ -196,15 +196,9 @@ class CassieEnv:
 
         # A. Task Rewards
 
-        # 1. Pelvis Orientation
-        # r_pelvis_roll = np.exp(-qpos[4] ** 2)
-        # r_pelvis_pitch = np.exp(-qpos[5] ** 2)
-        # r_pelvis_yaw = np.exp(-qpos[6] ** 2)
-        #
-        # r_pose = 0.335 * r_pelvis_roll + 0.33 * r_pelvis_pitch + 0.335 * r_pelvis_yaw
-        # TODO: Which one should be used?
+        # 1. Pelvis Orientation [https://math.stackexchange.com/questions/90081/quaternion-distance]
         target_pose = np.array([1, 0, 0, 0])
-        r_pose = np.exp(-100 * np.linalg.norm(qpos[3:7] - target_pose, 1) ** 2)
+        r_pose = np.inner(qpos[3:7], target_pose) ** 2
 
         # 2. CoM Position Modulation
 
