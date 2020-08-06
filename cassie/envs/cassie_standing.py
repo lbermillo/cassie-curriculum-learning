@@ -198,7 +198,9 @@ class CassieEnv:
 
         # 1. Pelvis Orientation [https://math.stackexchange.com/questions/90081/quaternion-distance]
         target_pose = np.array([1, 0, 0, 0])
-        r_pose = np.inner(qpos[3:7], target_pose) ** 2
+        pose_error = 1 - np.inner(qpos[3:7], target_pose) ** 2
+
+        r_pose = np.exp(-1000 * pose_error ** 2)
 
         # 2. CoM Position Modulation
 
