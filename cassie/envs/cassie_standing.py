@@ -253,8 +253,8 @@ class CassieEnv:
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
         foot_yaw = np.array([qpos[8], qpos[22]])
-        left_foot_orient = np.exp(-multiplier * (foot_yaw[0] - pelvis_yaw) ** 2)
-        right_foot_orient = np.exp(-multiplier * (foot_yaw[1] - pelvis_yaw) ** 2)
+        left_foot_orient  = np.exp(-100 * (foot_yaw[0] - pelvis_yaw) ** 2)
+        right_foot_orient = np.exp(-100 * (foot_yaw[1] - pelvis_yaw) ** 2)
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
