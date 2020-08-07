@@ -159,7 +159,7 @@ class CassieEnv:
         return state, reward, done, {}
 
     def reset(self, phase=None):
-        # TODO: make the reset ratio a variable
+        # TODO: make the reset ratio a variable and speed
         if self.use_phase and np.random.rand() < 0.5:
             self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
 
