@@ -159,7 +159,8 @@ class CassieEnv:
         return state, reward, done, {}
 
     def reset(self, phase=None):
-        if self.use_phase:
+        # TODO: make the reset ratio a variable
+        if self.use_phase and np.random.rand() < 0.5:
             self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
 
             # get the corresponding state from the reference trajectory for the current phase
