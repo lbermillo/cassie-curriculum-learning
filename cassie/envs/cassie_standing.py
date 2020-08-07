@@ -1,12 +1,12 @@
 import os
-import random
-from math import floor
-
 import gym
+import random
 import numpy as np
-from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
-from cassie.quaternion_function import quaternion2euler
+
+from math import floor
 from cassie.trajectory import CassieTrajectory
+from cassie.quaternion_function import quaternion2euler
+from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
 # Creating the Standing Environment
