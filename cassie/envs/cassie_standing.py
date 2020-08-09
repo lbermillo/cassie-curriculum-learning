@@ -160,7 +160,7 @@ class CassieEnv:
 
     def reset(self, phase=None):
         # TODO: make the reset ratio a variable and speed
-        if self.use_phase and np.random.rand() < 0.5:
+        if self.use_phase and np.random.rand() < 0.7:
             self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
 
             # get the corresponding state from the reference trajectory for the current phase
@@ -202,7 +202,7 @@ class CassieEnv:
         target_pose = np.array([1, 0, 0, 0])
         pose_error = 1 - np.inner(qpos[3:7], target_pose) ** 2
 
-        r_pose = np.exp(-1000 * pose_error ** 2)
+        r_pose = np.exp(-1e4 * pose_error ** 2)
 
         # 2. CoM Position Modulation
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
@@ -345,9 +345,9 @@ class CassieEnv:
 
         return cost
 
-    def get_ref_state(self, phase=None):
-        if phase is None:
-            phase = self.phase
+    def get_ref_state(self, phase=None, speed=None):
+        phase = self.phase if phase is None else phase
+        speed = self.speed if speed is None else speed
 
         if phase > self.phaselen:
             phase = 0
@@ -362,8 +362,8 @@ class CassieEnv:
         # gets dropped out of state variable for input reasons
 
         ###### Setting variable speed  #########
-        pos[0] *= self.speed
-        pos[0] += (self.trajectory.qpos[-1, 0] - self.trajectory.qpos[0, 0]) * self.speed
+        pos[0] *= speed
+        pos[0] += (self.trajectory.qpos[-1, 0] - self.trajectory.qpos[0, 0]) * speed
         ######                          ########
 
         # setting lateral distance target to 0?
@@ -371,7 +371,7 @@ class CassieEnv:
         pos[1] = 0
 
         vel = np.copy(self.trajectory.qvel[phase * self.simrate])
-        vel[0] *= self.speed
+        vel[0] *= speed
 
         return pos, vel
 
