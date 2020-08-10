@@ -229,6 +229,7 @@ class CassieEnv:
 
         # 4. Foot Placement
         # 4a. Foot Alignment
+        # TODO: Causes foot dragging when feet are not initially aligned, how to get rid of this? Capture Points?
         r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
@@ -247,9 +248,9 @@ class CassieEnv:
         r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
 
         # 4d. Foot Velocity
-        r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
+        # r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
 
-        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        r_foot_placement = 0.33 * r_feet_align + 0.33 * r_foot_width + 0.34 * r_foot_height # + 0.1 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -339,6 +340,9 @@ class CassieEnv:
 
         # 3. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
+
+        # TODO: 4. Foot Drag
+        c_drag = 0.
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
