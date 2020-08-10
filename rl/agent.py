@@ -144,7 +144,7 @@ class Agent:
         for eps in range(eval_eps):
             with torch.no_grad():
                 episode_reward = 0
-                state = env.reset()
+                state = env.reset(evaluate=True)
                 done = False
                 step = 0
 

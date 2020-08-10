@@ -151,26 +151,30 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_pos, foot_grf) if height_in_bounds else 0.0
+                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
 
         return state, reward, done, {}
 
-    def reset(self, phase=None):
-        # TODO: make the reset ratio a variable and speed
-        if self.use_phase and np.random.rand() < 0.7:
-            self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-
-            # get the corresponding state from the reference trajectory for the current phase
-            qpos, qvel = self.get_ref_state(self.phase)
-
-            self.sim.set_qpos(qpos)
-            self.sim.set_qvel(qvel)
-        else:
+    def reset(self, phase=None, evaluate=False):
+        if evaluate:
             self.sim.full_reset()
             self.reset_cassie_state()
+        else:
+            # TODO: make the reset ratio a variable and speed
+            if self.use_phase and np.random.rand() < 0.7:
+                self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
+
+                # get the corresponding state from the reference trajectory for the current phase
+                qpos, qvel = self.get_ref_state(self.phase)
+
+                self.sim.set_qpos(qpos)
+                self.sim.set_qvel(qvel)
+            else:
+                self.sim.full_reset()
+                self.reset_cassie_state()
 
         return self.get_full_state()
 
@@ -190,7 +194,7 @@ class CassieEnv:
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0),
                        multiplier=500):
 
-        left_foot_pos = foot_pos[:3]
+        left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
 
         # midfoot position
@@ -248,15 +252,15 @@ class CassieEnv:
         r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
 
         # 4d. Foot Velocity
-        # r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
+        r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
 
-        r_foot_placement = 0.33 * r_feet_align + 0.33 * r_foot_width + 0.34 * r_foot_height # + 0.1 * r_foot_vel
+        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
         foot_yaw = np.array([qpos[8], qpos[22]])
-        left_foot_orient  = np.exp(-100 * (foot_yaw[0] - pelvis_yaw) ** 2)
-        right_foot_orient = np.exp(-100 * (foot_yaw[1] - pelvis_yaw) ** 2)
+        left_foot_orient  = np.exp(-multiplier * (foot_yaw[0] - pelvis_yaw) ** 2)
+        right_foot_orient = np.exp(-multiplier * (foot_yaw[1] - pelvis_yaw) ** 2)
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
@@ -298,9 +302,9 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.2, 0.1, 0.5, 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
-        c_contact = 1. if (foot_grf[2] + foot_grf[5]) == 0. else 0.
+        c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
         # 2. Power Consumption
         # Specs taken from RoboDrive datasheet for ILM 115x50
@@ -341,11 +345,20 @@ class CassieEnv:
         # 3. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
-        # TODO: 4. Foot Drag
-        c_drag = 0.
+        # 4. Foot Drag
+        c_drag = 0
+
+        # if both feet are on the ground
+        if c_contact == 0:
+            leftx_grf  = 1 / (1 + np.exp(10 - np.abs(foot_grf[0])))
+            lefty_grf  = 1 / (1 + np.exp(30 - np.abs(foot_grf[1])))
+            rightx_grf = 1 / (1 + np.exp(10 - np.abs(foot_grf[3])))
+            righty_grf = 1 / (1 + np.exp(30 - np.abs(foot_grf[4])))
+
+            c_drag = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
 
         return cost
 
