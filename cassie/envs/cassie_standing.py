@@ -4,10 +4,15 @@ import random
 import numpy as np
 
 from math import floor
+from copy import deepcopy
 from cassie.trajectory import CassieTrajectory
 from cassie.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
+# TODO: Test these out
+#  1. min_height = 0.6/0.7
+#  2. no foot velocity and no foot height
+#  3. target foot width = 0.13 m
 
 # Creating the Standing Environment
 class CassieEnv:
@@ -56,6 +61,14 @@ class CassieEnv:
         self.observation_space = np.zeros(self.observation_size)
         self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10))
 
+        # tracking various variables for reward funcs
+        self.l_foot_frc = np.zeros(3)
+        self.r_foot_frc = np.zeros(3)
+        self.l_foot_vel = np.zeros(3)
+        self.r_foot_vel = np.zeros(3)
+        self.l_foot_pos = np.zeros(3)
+        self.r_foot_pos = np.zeros(3)
+
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
         self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
@@ -98,6 +111,9 @@ class CassieEnv:
         # Create Target Action
         target = action + (self.offset_weight * self.offset)
 
+        foot_pos = np.zeros(6)
+        self.sim.foot_pos(foot_pos)
+        prev_foot = deepcopy(foot_pos)
         self.u = pd_in_t()
 
         # Apply perturbations to the pelvis
@@ -127,21 +143,47 @@ class CassieEnv:
         # Send action input (u) into sim and update cassie_state
         self.cassie_state = self.sim.step_pd(self.u)
 
+        # Update tracking variables
+        self.sim.foot_pos(foot_pos)
+        self.l_foot_vel = (foot_pos[0:3] - prev_foot[0:3]) / 0.0005
+        self.r_foot_vel = (foot_pos[3:6] - prev_foot[3:6]) / 0.0005
+
     def step(self, action):
+
+        # reset mujoco tracking variables
+        self.l_foot_frc = 0
+        self.r_foot_frc = 0
+        foot_pos = np.zeros(6)
+        self.l_foot_pos = np.zeros(3)
+        self.r_foot_pos = np.zeros(3)
 
         for _ in range(self.simrate):
             self.step_simulation(action)
+
+            # Foot Force Tracking
+            foot_forces = self.sim.get_foot_forces()
+            self.l_foot_frc += foot_forces[0:3]
+            self.r_foot_frc += foot_forces[3:6]
+
+            # Relative Foot Position tracking
+            self.sim.foot_pos(foot_pos)
+            self.l_foot_pos += foot_pos[0:3]
+            self.r_foot_pos += foot_pos[3:6]
 
         # CoM Position and Velocity
         qpos = np.copy(self.sim.qpos())
         qvel = np.copy(self.sim.qvel())
 
-        # Foot Positions
-        foot_pos = np.zeros(6)
-        self.sim.foot_pos(foot_pos)
+        # Get the average foot positions and forces
+        self.l_foot_frc              /= self.simrate
+        self.r_foot_frc              /= self.simrate
+        self.l_foot_pos              /= self.simrate
+        self.r_foot_pos              /= self.simrate
 
-        # Foot Forces
-        foot_grf = self.sim.get_foot_forces()
+        # Create lists for foot positions, velocities, and forces
+        foot_pos = np.append(self.l_foot_pos, self.r_foot_pos)
+        foot_vel = np.append(self.l_foot_vel, self.r_foot_vel)
+        foot_grf = np.append(self.l_foot_frc, self.r_foot_frc)
 
         # Current State
         state = self.get_full_state()
@@ -150,8 +192,8 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_vel, foot_grf) \
+                 - self.compute_cost(qpos, foot_vel, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -191,8 +233,8 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0),
-                       multiplier=500):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_vel, foot_grf, grf_tolerance=25,
+                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -233,12 +275,11 @@ class CassieEnv:
 
         # 4. Foot Placement
         # 4a. Foot Alignment
-        # TODO: Causes foot dragging when feet are not initially aligned, how to get rid of this? Capture Points?
         r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
         width_thresh = 0.0254 # m = 2.54 cm = 1 in
-        target_width = 0.16  # m = 16 cm
+        target_width = 0.13  # m = 13 cm
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
@@ -249,12 +290,12 @@ class CassieEnv:
             r_foot_width = 1.
 
         # 4c. Foot Height
-        r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
+        # r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
 
         # 4d. Foot Velocity
-        r_foot_vel = np.exp(-np.linalg.norm([qvel[12], qvel[19]]) ** 2)
+        # r_foot_vel = np.exp(-np.linalg.norm(foot_vel) ** 2)
 
-        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width # + 0.3 * r_foot_height + 0.1 * r_foot_vel
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -302,7 +343,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.2, 0.1, 0.5, 0.1)):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -345,17 +386,22 @@ class CassieEnv:
         # 3. Falling
         c_fall = 1 if qpos[2] < self.min_height else 0
 
-        # 4. Foot Drag
+        # 4. Foot Drag : foot is down, moving, and has GRF
         c_drag = 0
 
         # if both feet are on the ground
         if c_contact == 0:
+
+            # check for grfs
             leftx_grf  = 1 / (1 + np.exp(10 - np.abs(foot_grf[0])))
             lefty_grf  = 1 / (1 + np.exp(30 - np.abs(foot_grf[1])))
             rightx_grf = 1 / (1 + np.exp(10 - np.abs(foot_grf[3])))
             righty_grf = 1 / (1 + np.exp(30 - np.abs(foot_grf[4])))
 
-            c_drag = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
+            foot_xy_grf = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
+
+            # check for foot movement
+
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
