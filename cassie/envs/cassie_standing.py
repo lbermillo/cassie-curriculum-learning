@@ -291,7 +291,8 @@ class CassieEnv:
         # 4d. Foot Velocity
         # r_foot_vel = np.exp(-np.linalg.norm(foot_vel) ** 2)
 
-        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width # + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        # r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -302,7 +303,8 @@ class CassieEnv:
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
         # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
-        target_grf = (foot_grf[2] + foot_grf[5]) / 2.
+        # target_grf = (foot_grf[2] + foot_grf[5]) / 2.
+        target_grf = self.weight / 2.
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
 
