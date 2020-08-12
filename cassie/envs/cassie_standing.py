@@ -9,10 +9,6 @@ from cassie.trajectory import CassieTrajectory
 from cassie.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
-# TODO: Test these out
-#  1. min_height = 0.6/0.7
-#  2. no foot velocity and no foot height
-#  3. target foot width = 0.13 m
 
 # Creating the Standing Environment
 class CassieEnv:
@@ -343,7 +339,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.)):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.6):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -384,9 +380,9 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Falling
-        c_fall = 1 if qpos[2] < self.min_height else 0
+        c_fall = 1 if qpos[2] < fall_height else 0
 
-        # 4. Foot Drag : foot is down, moving, and has GRF
+        # 4. TODO: Foot Drag : foot is down, moving, and has GRF
         c_drag = 0
 
         # if both feet are on the ground
@@ -401,7 +397,6 @@ class CassieEnv:
             foot_xy_grf = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
 
             # check for foot movement
-
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
