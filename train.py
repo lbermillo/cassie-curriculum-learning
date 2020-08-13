@@ -122,7 +122,7 @@ if __name__ == '__main__':
                                                                                                       args.tag)
 
     # create SummaryWriter instance to log information
-    writer = SummaryWriter('runs/{}. {}/{}'.format(int(args.env + 1),
+    writer = SummaryWriter('runs/{}. {}/Running/{}'.format(int(args.env + 1),
                                                    envs[args.env][0],
                                                    agent_id), flush_secs=60) if args.tensorboard else None
 
