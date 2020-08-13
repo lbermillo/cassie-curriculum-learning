@@ -36,8 +36,7 @@ class CassieEnv:
         self.weight = self.mass * 9.81
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        self.midfoot_offset = np.array([0.15, 0.05219, 0., 0.15, -0.05219, 0.])
+        self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -308,7 +307,6 @@ class CassieEnv:
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
 
-        # reward is only activated when both feet are down
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # B. Target/Imitation Reward
