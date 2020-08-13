@@ -339,7 +339,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.6):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.4):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -396,7 +396,8 @@ class CassieEnv:
 
             foot_xy_grf = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
 
-            # check for foot movement
+            # check for foot velocities
+
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
