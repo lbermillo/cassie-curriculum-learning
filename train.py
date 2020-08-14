@@ -4,8 +4,8 @@ import random
 
 import numpy as np
 import torch
+from rl.agents import TD3
 from cassie.envs import cassie, cassie_standing
-from rl.agent import Agent
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -114,7 +114,8 @@ if __name__ == '__main__':
                                                                                                       args.hidden,
                                                                                                       args.batch,
                                                                                                       args.tau,
-                                                                                                      int(args.training_steps),
+                                                                                                      int(
+                                                                                                          args.training_steps),
                                                                                                       args.eps_steps,
                                                                                                       args.expl_noise,
                                                                                                       args.seed,
@@ -141,24 +142,24 @@ if __name__ == '__main__':
     max_action = env.action_space.high[0]
 
     # initialize agent
-    agent = Agent(args.algo,
-                  state_dim,
-                  action_dim,
-                  max_action,
-                  hidden_dim=args.hidden,
-                  actor_lr=args.alr,
-                  critic_lr=args.clr,
-                  discount=args.discount,
-                  tau=args.tau,
-                  policy_noise=args.policy_noise,
-                  random_action_steps=args.start_steps,
-                  capacity=args.buffer,
-                  batch_size=args.batch,
-                  policy_update_freq=args.update_fq,
-                  chkpt_pth=args.load,
-                  init_weights=args.network_init,
-                  termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
-                  writer=writer)
+    agent = TD3.Agent(args.algo,
+                      state_dim,
+                      action_dim,
+                      max_action,
+                      hidden_dim=args.hidden,
+                      actor_lr=args.alr,
+                      critic_lr=args.clr,
+                      discount=args.discount,
+                      tau=args.tau,
+                      policy_noise=args.policy_noise,
+                      random_action_steps=args.start_steps,
+                      capacity=args.buffer,
+                      batch_size=args.batch,
+                      policy_update_freq=args.update_fq,
+                      chkpt_pth=args.load,
+                      init_weights=args.network_init,
+                      termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
+                      writer=writer)
 
     # run training
     agent.train(env,

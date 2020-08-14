@@ -3,8 +3,8 @@ import time
 import numpy as np
 import torch
 
-from .algorithms.TD3 import TD3
-from .utils.ReplayMemory import ReplayMemory
+from rl.algorithms.TD3 import TD3
+from rl.utils.ReplayMemory import ReplayMemory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
