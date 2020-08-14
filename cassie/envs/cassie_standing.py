@@ -36,8 +36,7 @@ class CassieEnv:
         self.weight = self.mass * 9.81
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        self.midfoot_offset = np.array([0.15, 0.05219, 0., 0.15, -0.05219, 0.])
+        self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -291,7 +290,8 @@ class CassieEnv:
         # 4d. Foot Velocity
         # r_foot_vel = np.exp(-np.linalg.norm(foot_vel) ** 2)
 
-        r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width # + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        # r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -302,11 +302,11 @@ class CassieEnv:
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
         # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
-        target_grf = (foot_grf[2] + foot_grf[5]) / 2.
+        # target_grf = (foot_grf[2] + foot_grf[5]) / 2.
+        target_grf = self.weight / 2.
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
 
-        # reward is only activated when both feet are down
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # B. Target/Imitation Reward
@@ -329,17 +329,17 @@ class CassieEnv:
                   + rw[5] * r_grf
                   + rw[6] * r_target_joint_pos)
 
-        print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
-                                                                                                               r_com_pos,
-                                                                                                               r_com_vel,
-                                                                                                               r_foot_placement,
-                                                                                                               r_fp_orient,
-                                                                                                               r_grf,
-                                                                                                               r_target_joint_pos))
+        # print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
+        #                                                                                                        r_com_pos,
+        #                                                                                                        r_com_vel,
+        #                                                                                                        r_foot_placement,
+        #                                                                                                        r_fp_orient,
+        #                                                                                                        r_grf,
+        #                                                                                                        r_target_joint_pos))
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.6):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.4):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -396,7 +396,8 @@ class CassieEnv:
 
             foot_xy_grf = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
 
-            # check for foot movement
+            # check for foot velocities
+
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
