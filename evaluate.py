@@ -15,8 +15,8 @@ if __name__ == "__main__":
     # Environment parameters
     parser.add_argument('--env', '-e', type=int, default=0, dest='env',
                         help='Cassie environment: [0] Standing, [1] Walking (default: Standing)')
-    parser.add_argument('--simrate', type=int, default=60,
-                        help='Simulation rate in Hz (default: 60)')
+    parser.add_argument('--simrate', type=int, default=40,
+                        help='Simulation rate in Hz (default: 40)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock and uses reference trajectories')
     parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
