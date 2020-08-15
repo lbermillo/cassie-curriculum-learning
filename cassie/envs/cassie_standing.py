@@ -14,7 +14,7 @@ from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), use_phase=False,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
                  min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
@@ -27,6 +27,7 @@ class CassieEnv:
         self.state_est = state_est
         self.reward_cutoff = reward_cutoff
         self.forces = forces
+        self.force_fq = force_fq
         self.min_height = min_height
         self.max_height = max_height
         self.target_height = target_height
@@ -63,6 +64,7 @@ class CassieEnv:
         self.r_foot_vel = np.zeros(3)
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
+        self.timestep = 0
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -73,21 +75,19 @@ class CassieEnv:
         self.cassie_state = state_out_t()
         self.simrate = simrate
         self.speed = 0
-        self.use_phase = use_phase
 
-        if self.use_phase:
-            dirname = os.path.dirname(__file__)
-            if traj == "walking":
-                traj_path = os.path.join(dirname, "..", "trajectory", "stepdata.bin")
+        dirname = os.path.dirname(__file__)
+        if traj == "walking":
+            traj_path = os.path.join(dirname, "..", "trajectory", "stepdata.bin")
 
-            elif traj == "stepping":
-                # traj_path = os.path.join(dirname, "trajectory", "spline_stepping_traj.pkl")
-                traj_path = os.path.join(dirname, "..", "trajectory", "more-poses-trial.bin")
+        elif traj == "stepping":
+            # traj_path = os.path.join(dirname, "trajectory", "spline_stepping_traj.pkl")
+            traj_path = os.path.join(dirname, "..", "trajectory", "more-poses-trial.bin")
 
-            self.trajectory = CassieTrajectory(traj_path)
+        self.trajectory = CassieTrajectory(traj_path)
 
-            self.phase = 0  # portion of the phase the robot is in
-            self.phaselen = floor(len(self.trajectory) / self.simrate) - 1
+        self.phase = 0  # portion of the phase the robot is in
+        self.phaselen = floor(len(self.trajectory) / self.simrate) - 1
 
         # See include/cassiemujoco.h for meaning of these indices
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
@@ -110,13 +110,6 @@ class CassieEnv:
         self.sim.foot_pos(foot_pos)
         prev_foot = deepcopy(foot_pos)
         self.u = pd_in_t()
-
-        # Apply perturbations to the pelvis
-        self.sim.apply_force([np.random.uniform(-self.forces[0], self.forces[0]),
-                              np.random.uniform(-self.forces[1], self.forces[1]),
-                              np.random.uniform(-self.forces[2], self.forces[2]),
-                              0,
-                              0])
 
         # Apply Action
         for i in range(5):
@@ -145,10 +138,23 @@ class CassieEnv:
 
     def step(self, action):
 
+        if self.timestep % self.force_fq == 0:
+            # Apply perturbations to the pelvis
+            # self.sim.apply_force([np.random.uniform(-self.forces[0], self.forces[0]),
+            #                       np.random.uniform(-self.forces[1], self.forces[1]),
+            #                       np.random.uniform(-self.forces[2], self.forces[2]),
+            #                       0,
+            #                       0])
+            self.sim.apply_force([random.choice([-self.forces[0], self.forces[0]]),
+                                  random.choice([-self.forces[1], self.forces[1]]),
+                                  random.choice([-self.forces[2], self.forces[2]]),
+                                  0,
+                                  0])
+
         # reset mujoco tracking variables
-        self.l_foot_frc = 0
-        self.r_foot_frc = 0
         foot_pos = np.zeros(6)
+        self.l_foot_frc = np.zeros(3)
+        self.r_foot_frc = np.zeros(3)
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
 
@@ -193,15 +199,21 @@ class CassieEnv:
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
 
+        # Update timestep counter
+        self.timestep += 1
+
         return state, reward, done, {}
 
-    def reset(self, phase=None, evaluate=False):
-        if evaluate:
+    def reset(self, phase=None, full_reset=False):
+        # reset variables
+        self.timestep = 0
+
+        if full_reset:
             self.sim.full_reset()
             self.reset_cassie_state()
         else:
             # TODO: make the reset ratio a variable and speed
-            if self.use_phase and np.random.rand() < 0.7:
+            if np.random.rand() < 0.7:
                 self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
 
                 # get the corresponding state from the reference trajectory for the current phase

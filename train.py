@@ -31,8 +31,6 @@ if __name__ == '__main__':
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
-    parser.add_argument('--use_phase', action='store_true', default=False,
-                        help='Start initial positions from different phases (default: False)')
 
     # Training parameters
     parser.add_argument('--training_steps', type=float, default=1e6,
@@ -45,6 +43,8 @@ if __name__ == '__main__':
                         help='Creates a seed to the specified value (default: None)')
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
+    parser.add_argument('--phase_reset', action='store_true', default=False,
+                        help='Starts the episode from a random walking phase')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -119,7 +119,7 @@ if __name__ == '__main__':
                                                                                                       args.eps_steps,
                                                                                                       args.expl_noise,
                                                                                                       args.seed,
-                                                                                                      args.use_phase,
+                                                                                                      args.phase_reset,
                                                                                                       args.tag)
 
     # create SummaryWriter instance to log information
@@ -134,8 +134,7 @@ if __name__ == '__main__':
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             forces=args.forces,
-                            config=args.config,
-                            use_phase=args.use_phase)
+                            config=args.config, )
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -169,7 +168,8 @@ if __name__ == '__main__':
                 expl_noise=args.expl_noise,
                 filename='{}. {}/{}'.format(int(args.env + 1),
                                             envs[args.env][0],
-                                            agent_id) if args.save else None, )
+                                            agent_id) if args.save else None,
+                full_reset=not args.phase_reset, )
 
     if writer:
         # cleanup

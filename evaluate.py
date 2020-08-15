@@ -4,7 +4,7 @@ import argparse
 
 import torch
 from cassie.envs import cassie, cassie_standing
-from rl.agent import Agent
+from rl.agents import TD3
 
 # use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,8 +30,6 @@ if __name__ == "__main__":
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
-    parser.add_argument('--use_phase', action='store_true', default=False,
-                        help='Start initial positions from different phases (default: False)')
 
     # Evaluation parameters
     parser.add_argument('--eval_episodes', type=int, default=10,
@@ -42,6 +40,8 @@ if __name__ == "__main__":
                         help='Renders Cassie simulation (default: False)')
     parser.add_argument('--print_stats', action='store_false', default=True,
                         help='Prints episode rewards (default: True)')
+    parser.add_argument('--phase_reset', action='store_true', default=False,
+                        help='Starts the episode from a random walking phase')
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
@@ -56,29 +56,28 @@ if __name__ == "__main__":
     # create envs list
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
-    # TODO: initialize environment (Standing has other parameters like use_phase)
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
                             state_est=args.state_est,
                             reward_cutoff=args.rcut,
                             target_action_weight=args.tw,
                             forces=args.forces,
-                            config=args.config,
-                            use_phase=args.use_phase)
+                            config=args.config,)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     max_action = env.action_space.high[0]
 
     # initialize agent
-    agent = Agent(args.algo,
-                  state_dim,
-                  action_dim,
-                  max_action,
-                  chkpt_pth=args.load, )
+    agent = TD3.Agent(args.algo,
+                      state_dim,
+                      action_dim,
+                      max_action,
+                      chkpt_pth=args.load, )
 
     agent.evaluate(env,
                    eval_eps=args.eval_episodes,
                    max_steps=args.eval_steps,
                    render=args.render,
-                   print_stats=args.print_stats, )
+                   print_stats=args.print_stats,
+                   full_reset=not args.phase_reset)

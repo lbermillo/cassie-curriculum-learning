@@ -101,12 +101,12 @@ class Agent:
                 # update target networks
                 self.model.update_target_networks()
 
-    def collect(self, env, max_steps, noise=0.1):
+    def collect(self, env, max_steps, noise=0.1, full_reset=True):
         # initialize episode reward tracker for logging
         episode_reward = 0
 
         # reset environment
-        state = env.reset()
+        state = env.reset(full_reset=full_reset)
         done = False
         step = 0
 
@@ -135,7 +135,7 @@ class Agent:
 
         return step, episode_reward
 
-    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False):
+    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False, full_reset=True):
         total_rewards = 0.
 
         # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
@@ -144,7 +144,7 @@ class Agent:
         for eps in range(eval_eps):
             with torch.no_grad():
                 episode_reward = 0
-                state = env.reset(evaluate=True)
+                state = env.reset(full_reset=full_reset)
                 done = False
                 step = 0
 
@@ -166,13 +166,13 @@ class Agent:
 
         return total_rewards / eval_eps
 
-    def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results', filename=None):
+    def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results', filename=None, full_reset=True):
         episode = 0
         best_score = 0.0
 
         while self.total_steps < training_steps:
             # collect experiences
-            episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise)
+            episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise, full_reset=full_reset)
 
             if self.writer:
                 # log episode reward to tensorboard
