@@ -28,8 +28,11 @@ if __name__ == '__main__':
                         help='Weight multiplied to the action offset added to the policy action (default: 0.0)')
     parser.add_argument('--forces', '-f', nargs='+', type=float, default=(0., 0., 0.),
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
-    parser.add_argument('--force_fq', type=int, default=10,
-                        help='Frequency forces applied to the pelvis (default: 10 timesteps)')
+    parser.add_argument('--force_fq', type=int, default=100,
+                        help='Timestep frequency of forces applied to the pelvis (default: 100)')
+    parser.add_argument('--fall_height', type=float, default=0.7,
+                        help='Height in meters that the environment considers falling when it goes below this parameter'
+                             ' (default: 0.7)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
@@ -135,6 +138,7 @@ if __name__ == '__main__':
                             state_est=args.state_est,
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
+                            fall_height=args.fall_height,
                             forces=args.forces,
                             force_fq=args.force_fq,
                             config=args.config, )

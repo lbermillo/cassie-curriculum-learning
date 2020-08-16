@@ -15,7 +15,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.4, max_height=3.0, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.4, max_height=3.0, fall_height=0.7, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -30,6 +30,7 @@ class CassieEnv:
         self.force_fq = force_fq
         self.min_height = min_height
         self.max_height = max_height
+        self.fall_height = fall_height
         self.target_height = target_height
 
         # Cassie properties
@@ -140,11 +141,6 @@ class CassieEnv:
 
         if self.timestep % self.force_fq == 0:
             # Apply perturbations to the pelvis
-            # self.sim.apply_force([np.random.uniform(-self.forces[0], self.forces[0]),
-            #                       np.random.uniform(-self.forces[1], self.forces[1]),
-            #                       np.random.uniform(-self.forces[2], self.forces[2]),
-            #                       0,
-            #                       0])
             self.sim.apply_force([random.choice([-self.forces[0], self.forces[0]]),
                                   random.choice([-self.forces[1], self.forces[1]]),
                                   random.choice([-self.forces[2], self.forces[2]]),
@@ -255,7 +251,7 @@ class CassieEnv:
         target_pose = np.array([1, 0, 0, 0])
         pose_error = 1 - np.inner(qpos[3:7], target_pose) ** 2
 
-        r_pose = np.exp(-1e4 * pose_error ** 2)
+        r_pose = np.exp(-1e5 * pose_error ** 2)
 
         # 2. CoM Position Modulation
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
@@ -351,7 +347,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0.), fall_height=0.4):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -392,27 +388,10 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
 
         # 3. Falling
-        c_fall = 1 if qpos[2] < fall_height else 0
-
-        # 4. TODO: Foot Drag : foot is down, moving, and has GRF
-        c_drag = 0
-
-        # if both feet are on the ground
-        if c_contact == 0:
-
-            # check for grfs
-            leftx_grf  = 1 / (1 + np.exp(10 - np.abs(foot_grf[0])))
-            lefty_grf  = 1 / (1 + np.exp(30 - np.abs(foot_grf[1])))
-            rightx_grf = 1 / (1 + np.exp(10 - np.abs(foot_grf[3])))
-            righty_grf = 1 / (1 + np.exp(30 - np.abs(foot_grf[4])))
-
-            foot_xy_grf = 0.25 * leftx_grf + 0.25 * lefty_grf + 0.25 * rightx_grf + 0.25 * righty_grf
-
-            # check for foot velocities
-
+        c_fall = 1 if qpos[2] < self.fall_height else 0
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
 
         return cost
 
