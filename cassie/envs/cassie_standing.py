@@ -306,7 +306,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else 0.5 * r_foot_width
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
