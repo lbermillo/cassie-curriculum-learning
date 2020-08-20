@@ -15,7 +15,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.4, max_height=3.0, fall_height=0.7, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.6, max_height=3.0, fall_height=0.7, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -65,7 +65,9 @@ class CassieEnv:
         self.r_foot_vel = np.zeros(3)
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
+
         self.timestep = 0
+        self.full_reset = False
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -207,6 +209,10 @@ class CassieEnv:
         if full_reset:
             self.sim.full_reset()
             self.reset_cassie_state()
+
+            # TODO: Find a better way to do this
+            self.full_reset = True
+
         else:
             # TODO: make the reset ratio a variable and speed
             if np.random.rand() < 0.7:
@@ -217,9 +223,17 @@ class CassieEnv:
 
                 self.sim.set_qpos(qpos)
                 self.sim.set_qvel(qvel)
+
+                # TODO: Find a better way to do this
+                self.full_reset = False
+
             else:
                 self.sim.full_reset()
                 self.reset_cassie_state()
+
+                # TODO: Find a better way to do this
+                self.full_reset = True
+
 
         return self.get_full_state()
 
@@ -292,14 +306,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        # 4c. Foot Height
-        # r_foot_height = np.exp(-multiplier * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2)
-
-        # 4d. Foot Velocity
-        # r_foot_vel = np.exp(-np.linalg.norm(foot_vel) ** 2)
-
-        # r_foot_placement = 0.3 * r_feet_align + 0.3 * r_foot_width + 0.3 * r_foot_height + 0.1 * r_foot_vel
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
