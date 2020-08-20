@@ -38,7 +38,8 @@ class CassieEnv:
         self.weight = self.mass * 9.81
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
-        self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        # Already included in cassie_mujoco
+        # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -296,7 +297,7 @@ class CassieEnv:
 
         # 4b. Feet Width
         width_thresh = 0.0254 # m = 2.54 cm = 1 in
-        target_width = 0.13  # m = 13 cm
+        target_width = 0.13   # m = 13 cm
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
