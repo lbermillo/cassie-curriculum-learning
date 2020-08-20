@@ -40,6 +40,7 @@ class CassieEnv:
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
         # Already included in cassie_mujoco
         # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
+        self.midfoot_offset = np.array([0., 0., 0., 0., 0., 0.])
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -345,13 +346,13 @@ class CassieEnv:
                   + rw[5] * r_grf
                   + rw[6] * r_target_joint_pos)
 
-        # print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
-        #                                                                                                        r_com_pos,
-        #                                                                                                        r_com_vel,
-        #                                                                                                        r_foot_placement,
-        #                                                                                                        r_fp_orient,
-        #                                                                                                        r_grf,
-        #                                                                                                        r_target_joint_pos))
+        print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
+                                                                                                               r_com_pos,
+                                                                                                               r_com_vel,
+                                                                                                               r_foot_placement,
+                                                                                                               r_fp_orient,
+                                                                                                               r_grf,
+                                                                                                               r_target_joint_pos))
 
         return reward
 
