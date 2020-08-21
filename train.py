@@ -33,6 +33,10 @@ if __name__ == '__main__':
     parser.add_argument('--fall_height', type=float, default=0.7,
                         help='Height in meters that the environment considers falling when it goes below this parameter'
                              ' (default: 0.7)')
+    parser.add_argument('--max_speed', type=float, default=1,
+                        help='Speed threshold to train on. Measured in m/s (default: 1)')
+    parser.add_argument('--power_threshold', type=int, default=150,
+                        help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
@@ -110,27 +114,29 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}]{}'.format(envs[args.env][0],
-                                                                                                      args.rcut,
-                                                                                                      args.tw,
-                                                                                                      args.algo.upper(),
-                                                                                                      args.alr,
-                                                                                                      args.clr,
-                                                                                                      args.hidden,
-                                                                                                      args.batch,
-                                                                                                      args.tau,
-                                                                                                      int(
-                                                                                                          args.training_steps),
-                                                                                                      args.eps_steps,
-                                                                                                      args.expl_noise,
-                                                                                                      args.seed,
-                                                                                                      args.phase_reset,
-                                                                                                      args.tag)
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}]{}'.format(
+        envs[args.env][0],
+        args.rcut,
+        args.tw,
+        args.algo.upper(),
+        args.alr,
+        args.clr,
+        args.hidden,
+        args.batch,
+        args.tau,
+        int(args.training_steps),
+        args.eps_steps,
+        args.expl_noise,
+        args.seed,
+        args.phase_reset,
+        args.max_speed,
+        args.power_threshold,
+        args.tag)
 
     # create SummaryWriter instance to log information
     writer = SummaryWriter('runs/{}. {}/Running/{}'.format(int(args.env + 1),
-                                                   envs[args.env][0],
-                                                   agent_id), flush_secs=60) if args.tensorboard else None
+                                                           envs[args.env][0],
+                                                           agent_id), flush_secs=60) if args.tensorboard else None
 
     # initialize environment
     env = envs[args.env][1](simrate=args.simrate,
@@ -141,6 +147,8 @@ if __name__ == '__main__':
                             fall_height=args.fall_height,
                             forces=args.forces,
                             force_fq=args.force_fq,
+                            max_speed=args.max_speed,
+                            power_threshold=args.power_threshold,
                             config=args.config, )
 
     state_dim = env.observation_space.shape[0]

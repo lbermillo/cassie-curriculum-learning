@@ -290,6 +290,7 @@ class CassieEnv:
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
+        x_com_vel = np.exp(-multiplier * (q) ** 2)
         r_com_vel = np.exp(-np.linalg.norm(qvel[:3]) ** 2)
 
         # 4. Foot Placement

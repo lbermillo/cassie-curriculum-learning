@@ -15,7 +15,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.7, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.6, max_height=3.0, fall_height=0.7, max_speed=1, power_threshold=150, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -31,7 +31,9 @@ class CassieEnv:
         self.min_height = min_height
         self.max_height = max_height
         self.fall_height = fall_height
+        self.max_speed = max_speed
         self.target_height = target_height
+        self.power_threshold = power_threshold
 
         # Cassie properties
         self.mass = np.sum(self.sim.get_body_mass())
@@ -81,6 +83,7 @@ class CassieEnv:
         self.simrate = simrate
         self.speed = 0
 
+
         dirname = os.path.dirname(__file__)
         if traj == "walking":
             traj_path = os.path.join(dirname, "..", "trajectory", "stepdata.bin")
@@ -91,8 +94,9 @@ class CassieEnv:
 
         self.trajectory = CassieTrajectory(traj_path)
 
-        self.phase = 0  # portion of the phase the robot is in
+        # total number of phases
         self.phaselen = floor(len(self.trajectory) / self.simrate) - 1
+
 
         # See include/cassiemujoco.h for meaning of these indices
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
@@ -193,8 +197,8 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_vel, foot_grf) \
-                 - self.compute_cost(qpos, foot_vel, foot_grf) if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
+                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -204,7 +208,7 @@ class CassieEnv:
 
         return state, reward, done, {}
 
-    def reset(self, phase=None, full_reset=False):
+    def reset(self, phase=None, speed=None, full_reset=False, reset_ratio=0.7):
         # reset variables
         self.timestep = 0
 
@@ -216,12 +220,12 @@ class CassieEnv:
             self.full_reset = True
 
         else:
-            # TODO: make the reset ratio a variable and speed
-            if np.random.rand() < 0.7:
-                self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
+            if np.random.rand() < reset_ratio:
+                phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
+                speed = speed      if speed is not None else random.randint(0, int(self.max_speed * 10)) / 10.
 
                 # get the corresponding state from the reference trajectory for the current phase
-                qpos, qvel = self.get_ref_state(self.phase)
+                qpos, qvel = self.get_ref_state(phase, speed)
 
                 self.sim.set_qpos(qpos)
                 self.sim.set_qvel(qvel)
@@ -235,7 +239,6 @@ class CassieEnv:
 
                 # TODO: Find a better way to do this
                 self.full_reset = True
-
 
         return self.get_full_state()
 
@@ -252,8 +255,8 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_vel, foot_grf, grf_tolerance=25,
-                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
+                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500, debug=True):
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -302,9 +305,9 @@ class CassieEnv:
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
-            r_foot_width = np.exp(-multiplier * (feet_width - (target_width - width_thresh)) ** 2)
+            r_foot_width = np.exp(-(feet_width - (target_width - width_thresh)) ** 2)
         elif feet_width > target_width + width_thresh:
-            r_foot_width = np.exp(-multiplier * (feet_width - (target_width + width_thresh)) ** 2)
+            r_foot_width = np.exp(-(feet_width - (target_width + width_thresh)) ** 2)
         else:
             r_foot_width = 1.
 
@@ -338,25 +341,36 @@ class CassieEnv:
         r_target_joint_pos = np.exp(-np.linalg.norm(qpos - target_pos) ** 2)
 
         # Total Reward
-        reward = (rw[0] * r_pose
-                  + rw[1] * r_com_pos
-                  + rw[2] * r_com_vel
-                  + rw[3] * r_foot_placement
-                  + rw[4] * r_fp_orient
-                  + rw[5] * r_grf
-                  + rw[6] * r_target_joint_pos)
 
-        print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
-                                                                                                               r_com_pos,
-                                                                                                               r_com_vel,
-                                                                                                               r_foot_placement,
-                                                                                                               r_fp_orient,
-                                                                                                               r_grf,
-                                                                                                               r_target_joint_pos))
+        # activate grf reward when pelvis velocity is 0 so in doesn't try to drag its feet
+        if r_com_vel == 1:
+            reward = (rw[0] * r_pose
+                      + rw[1] * r_com_pos
+                      + rw[2] * r_com_vel
+                      + rw[3] * r_foot_placement
+                      + rw[4] * r_fp_orient
+                      + rw[5] * r_grf
+                      + rw[6] * r_target_joint_pos)
+        else:
+            reward = (rw[0] * r_pose
+                      + rw[1] * r_com_pos
+                      + rw[2] * r_com_vel
+                      + rw[3] * r_foot_placement
+                      + rw[4] * r_fp_orient
+                      + rw[6] * r_target_joint_pos)
+
+        if debug:
+            print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
+                                                                                                                   r_com_pos,
+                                                                                                                   r_com_vel,
+                                                                                                                   r_foot_placement,
+                                                                                                                   r_fp_orient,
+                                                                                                                   r_grf,
+                                                                                                                   r_target_joint_pos))
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -393,8 +407,7 @@ class CassieEnv:
         # estimate power
         power_estimate = np.sum(motor_powers) + np.sum(power_losses)
 
-        power_threshold = 150  # Watts (Positive Work only)
-        c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
+        c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
 
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
@@ -404,8 +417,7 @@ class CassieEnv:
 
         return cost
 
-    def get_ref_state(self, phase=None, speed=None):
-        phase = self.phase if phase is None else phase
+    def get_ref_state(self, phase, speed=None):
         speed = self.speed if speed is None else speed
 
         if phase > self.phaselen:
@@ -461,17 +473,6 @@ class CassieEnv:
                 self.cassie_state.joint.position[:],  # unactuated joint positions
                 self.cassie_state.joint.velocity[:]  # unactuated joint velocities
             ])
-
-            # robot_state = np.concatenate([
-            #     self.cassie_state.pelvis.orientation[:],  # pelvis orientation
-            #     self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-            #
-            #     self.cassie_state.motor.position[:],  # actuated joint positions
-            #     self.cassie_state.motor.velocity[:],  # actuated joint velocities
-            #
-            #     self.cassie_state.joint.position[:],  # unactuated joint positions
-            #     self.cassie_state.joint.velocity[:]  # unactuated joint velocities
-            # ])
 
             # Concatenate robot_state to ext_state
             ext_state = np.concatenate((robot_state, ext_state))
