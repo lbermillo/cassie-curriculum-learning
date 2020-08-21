@@ -32,6 +32,8 @@ if __name__ == "__main__":
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Activates reward debug (default: False)')
 
     # Evaluation parameters
     parser.add_argument('--eval_episodes', type=int, default=10,
@@ -65,7 +67,8 @@ if __name__ == "__main__":
                             target_action_weight=args.tw,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            config=args.config,)
+                            config=args.config,
+                            debug=args.debug)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
