@@ -15,7 +15,8 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.7, max_speed=1, power_threshold=150, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.6, max_height=3.0, fall_height=0.7, max_speed=1, power_threshold=150, debug=False,
+                 config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -34,6 +35,7 @@ class CassieEnv:
         self.max_speed = max_speed
         self.target_height = target_height
         self.power_threshold = power_threshold
+        self.debug = debug
 
         # Cassie properties
         self.mass = np.sum(self.sim.get_body_mass())
@@ -256,7 +258,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500, debug=True):
+                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -359,7 +361,7 @@ class CassieEnv:
                       + rw[4] * r_fp_orient
                       + rw[6] * r_target_joint_pos)
 
-        if debug:
+        if self.debug:
             print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
                                                                                                                    r_com_pos,
                                                                                                                    r_com_vel,
