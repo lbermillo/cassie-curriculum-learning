@@ -73,7 +73,6 @@ class CassieEnv:
         self.r_foot_pos = np.zeros(3)
 
         self.timestep = 0
-        self.full_reset = False
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -200,7 +199,7 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
+                 - self.compute_cost(qpos, foot_pos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -218,9 +217,6 @@ class CassieEnv:
             self.sim.full_reset()
             self.reset_cassie_state()
 
-            # TODO: Find a better way to do this
-            self.full_reset = True
-
         else:
             if np.random.rand() < reset_ratio:
                 phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
@@ -232,15 +228,9 @@ class CassieEnv:
                 self.sim.set_qpos(qpos)
                 self.sim.set_qvel(qvel)
 
-                # TODO: Find a better way to do this
-                self.full_reset = False
-
             else:
                 self.sim.full_reset()
                 self.reset_cassie_state()
-
-                # TODO: Find a better way to do this
-                self.full_reset = True
 
         return self.get_full_state()
 
@@ -313,7 +303,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else r_foot_width
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -372,7 +362,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.5, 0)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -413,6 +403,12 @@ class CassieEnv:
 
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
+
+        # TODO: 4. Foot Placement Cost
+        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
+
+        # if the feet are more than half a foot length apart in the x-axis or y-axis
+        # penalize for having both feet down
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
