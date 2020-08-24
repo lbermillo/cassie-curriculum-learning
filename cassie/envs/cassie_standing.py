@@ -15,7 +15,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.7, max_speed=1, power_threshold=150, debug=False,
+                 min_height=0.6, max_height=3.0, fall_height=0.4, max_speed=1, power_threshold=150, debug=False,
                  config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim

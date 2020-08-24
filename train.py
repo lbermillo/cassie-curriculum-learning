@@ -114,7 +114,7 @@ if __name__ == '__main__':
     envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}FH{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
@@ -131,6 +131,7 @@ if __name__ == '__main__':
         args.phase_reset,
         args.max_speed,
         args.power_threshold,
+        args.fall_height,
         args.tag)
 
     # create SummaryWriter instance to log information
