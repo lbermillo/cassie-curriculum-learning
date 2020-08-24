@@ -302,14 +302,14 @@ class CassieEnv:
         r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        width_thresh = 0.0254 # m = 2.54 cm = 1 in
-        target_width = 0.13   # m = 13 cm
+        width_thresh = 0.02     # m = 2 cm
+        target_width = 0.18     # m = 18 cm seems to be optimal
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
-            r_foot_width = np.exp(-(feet_width - (target_width - width_thresh)) ** 2)
+            r_foot_width = np.exp(-multiplier * (feet_width - (target_width - width_thresh)) ** 2)
         elif feet_width > target_width + width_thresh:
-            r_foot_width = np.exp(-(feet_width - (target_width + width_thresh)) ** 2)
+            r_foot_width = np.exp(-multiplier * (feet_width - (target_width + width_thresh)) ** 2)
         else:
             r_foot_width = 1.
 
