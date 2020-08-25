@@ -199,7 +199,7 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_pos, foot_grf) if height_in_bounds else 0.0
+                 - self.compute_cost(qpos, foot_vel, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -248,7 +248,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
+                       rw=(0.2, 0.2, 0.2, 0.2, 0.2, 0, 0), multiplier=500):
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -276,16 +276,16 @@ class CassieEnv:
         z_target_pos = self.target_height
 
         if qpos[2] < z_target_pos - height_thresh:
-            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
+            z_com_pos = np.exp(-100 * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
         elif qpos[2] > z_target_pos + 0.1:
-            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
+            z_com_pos = np.exp(-100 * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
         else:
             z_com_pos = 1.
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        r_com_vel = np.exp(-np.linalg.norm(qvel[:3]) ** 2)
+        r_com_vel = np.exp(-100 * np.linalg.norm(qvel[:3]) ** 2)
 
         # 4. Foot Placement
         # 4a. Foot Alignment
@@ -333,23 +333,13 @@ class CassieEnv:
         r_target_joint_pos = np.exp(-np.linalg.norm(qpos - target_pos) ** 2)
 
         # Total Reward
-
-        # activate grf reward when pelvis velocity is 0 so in doesn't try to drag its feet
-        if r_com_vel == 1:
-            reward = (rw[0] * r_pose
-                      + rw[1] * r_com_pos
-                      + rw[2] * r_com_vel
-                      + rw[3] * r_foot_placement
-                      + rw[4] * r_fp_orient
-                      + rw[5] * r_grf
-                      + rw[6] * r_target_joint_pos)
-        else:
-            reward = (rw[0] * r_pose
-                      + rw[1] * r_com_pos
-                      + rw[2] * r_com_vel
-                      + rw[3] * r_foot_placement
-                      + rw[4] * r_fp_orient
-                      + rw[6] * r_target_joint_pos)
+        reward = (rw[0] * r_pose
+                  + rw[1] * r_com_pos
+                  + rw[2] * r_com_vel
+                  + rw[3] * r_foot_placement
+                  + rw[4] * r_fp_orient
+                  + rw[5] * r_grf
+                  + rw[6] * r_target_joint_pos)
 
         if self.debug:
             print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
@@ -362,7 +352,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_pos, foot_grf, cw=(0.3, 0.1, 0.5, 0)):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5, 0)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -404,11 +394,9 @@ class CassieEnv:
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
 
-        # TODO: 4. Foot Placement Cost
-        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
-
-        # if the feet are more than half a foot length apart in the x-axis or y-axis
-        # penalize for having both feet down
+        # TODO: 4. Foot Drag Cost
+        # foot is moving (velocity) and has grf
+        # print(np.sum(foot_vel[:3]), np.sum(foot_grf[:3]), np.sum(foot_vel[3:]), np.sum(foot_grf[3:]))
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
