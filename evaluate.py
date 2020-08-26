@@ -29,6 +29,8 @@ if __name__ == "__main__":
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
     parser.add_argument('--force_fq', type=int, default=10,
                         help='Frequency forces applied to the pelvis (default: 10 timesteps)')
+    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
+                        help='Min and max speeds in m/s (default: [0, 1])')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
@@ -67,6 +69,8 @@ if __name__ == "__main__":
                             target_action_weight=args.tw,
                             forces=args.forces,
                             force_fq=args.force_fq,
+                            min_speed=args.speed[0],
+                            max_speed=args.speed[1],
                             config=args.config,
                             debug=args.debug)
 

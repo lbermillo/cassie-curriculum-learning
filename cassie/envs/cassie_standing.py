@@ -15,7 +15,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.4, max_speed=1, power_threshold=150, debug=False,
+                 min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0, max_speed=1, power_threshold=150, debug=False,
                  config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
@@ -32,6 +32,7 @@ class CassieEnv:
         self.min_height = min_height
         self.max_height = max_height
         self.fall_height = fall_height
+        self.min_speed = min_speed
         self.max_speed = max_speed
         self.target_height = target_height
         self.power_threshold = power_threshold
@@ -73,6 +74,7 @@ class CassieEnv:
         self.r_foot_pos = np.zeros(3)
 
         self.timestep = 0
+        self.full_reset = False
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -217,10 +219,13 @@ class CassieEnv:
             self.sim.full_reset()
             self.reset_cassie_state()
 
+            # Tracking variable for Foot Alignment reward
+            self.full_reset = True
+
         else:
             if np.random.rand() < reset_ratio:
                 phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-                speed = speed      if speed is not None else random.randint(0, int(self.max_speed * 10)) / 10.
+                speed = speed      if speed is not None else random.randint(int(self.min_speed * 10), int(self.max_speed * 10)) / 10.
 
                 # get the corresponding state from the reference trajectory for the current phase
                 qpos, qvel = self.get_ref_state(phase, speed)
@@ -228,9 +233,15 @@ class CassieEnv:
                 self.sim.set_qpos(qpos)
                 self.sim.set_qvel(qvel)
 
+                # Tracking variable for Foot Alignment reward
+                self.full_reset = False
+
             else:
                 self.sim.full_reset()
                 self.reset_cassie_state()
+
+                # Tracking variable for Foot Alignment reward
+                self.full_reset = True
 
         return self.get_full_state()
 
@@ -248,7 +259,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.2, 0.2, 0.2, 0.2, 0.2, 0, 0), multiplier=500):
+                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -303,7 +314,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
