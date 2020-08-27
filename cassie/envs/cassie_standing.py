@@ -344,13 +344,23 @@ class CassieEnv:
         r_target_joint_pos = np.exp(-np.linalg.norm(qpos - target_pos) ** 2)
 
         # Total Reward
-        reward = (rw[0] * r_pose
-                  + rw[1] * r_com_pos
-                  + rw[2] * r_com_vel
-                  + rw[3] * r_foot_placement
-                  + rw[4] * r_fp_orient
-                  + rw[5] * r_grf
-                  + rw[6] * r_target_joint_pos)
+
+        # activate grf reward when pelvis velocity is 0 so in doesn't try to drag its feet
+        if r_com_vel > 0.99:
+            reward = (rw[0] * r_pose
+                      + rw[1] * r_com_pos
+                      + rw[2] * r_com_vel
+                      + rw[3] * r_foot_placement
+                      + rw[4] * r_fp_orient
+                      + rw[5] * r_grf
+                      + rw[6] * r_target_joint_pos)
+        else:
+            reward = (rw[0] * r_pose
+                      + rw[1] * r_com_pos
+                      + rw[2] * r_com_vel
+                      + rw[3] * r_foot_placement
+                      + rw[4] * r_fp_orient
+                      + rw[6] * r_target_joint_pos)
 
         if self.debug:
             print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,

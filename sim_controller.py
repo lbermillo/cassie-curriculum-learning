@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import time
-import numpy as np
 import torch
 import pickle
 import platform
+import numpy as np
 
 # import signal
 import atexit
@@ -19,6 +19,7 @@ from cassie.envs import cassie_standing
 from cassie.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
+
 
 def isData():
     return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
