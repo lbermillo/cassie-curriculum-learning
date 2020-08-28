@@ -46,8 +46,8 @@ if __name__ == "__main__":
                         help='Renders Cassie simulation (default: False)')
     parser.add_argument('--print_stats', action='store_false', default=True,
                         help='Prints episode rewards (default: True)')
-    parser.add_argument('--phase_reset', action='store_true', default=False,
-                        help='Starts the episode from a random walking phase')
+    parser.add_argument('--reset_ratio', type=float, default=0,
+                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
@@ -90,4 +90,4 @@ if __name__ == "__main__":
                    max_steps=args.eval_steps,
                    render=args.render,
                    print_stats=args.print_stats,
-                   full_reset=not args.phase_reset)
+                   reset_ratio=args.reset_ratio, )
