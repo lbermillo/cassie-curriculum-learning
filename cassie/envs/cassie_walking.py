@@ -10,12 +10,13 @@ from cassie.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
-# Creating the Standing Environment
+# Creating the Walking Environment
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.7, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0.5, max_speed=2.0, power_threshold=150, debug=False,
+                 config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -31,7 +32,12 @@ class CassieEnv:
         self.min_height = min_height
         self.max_height = max_height
         self.fall_height = fall_height
+        # TODO: in future development, format speeds to [x, y, z]
+        self.min_speed = min_speed
+        self.max_speed = max_speed
         self.target_height = target_height
+        self.power_threshold = power_threshold
+        self.debug = debug
 
         # Cassie properties
         self.mass = np.sum(self.sim.get_body_mass())
@@ -48,6 +54,8 @@ class CassieEnv:
         self.offset_weight = target_action_weight
 
         # Initialize Observation and Action Spaces (+1 is for speed input)
+        # TODO: Future development +3 for speeds [x, y, z], +1 for orientation,
+        #       and input reduction to only directly measured sensors
         self.observation_size = 40 + 1
 
         if self.clock_based:
@@ -69,7 +77,6 @@ class CassieEnv:
         self.r_foot_pos = np.zeros(3)
 
         self.timestep = 0
-        self.full_reset = False
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -176,10 +183,10 @@ class CassieEnv:
         qvel = np.copy(self.sim.qvel())
 
         # Get the average foot positions and forces
-        self.l_foot_frc              /= self.simrate
-        self.r_foot_frc              /= self.simrate
-        self.l_foot_pos              /= self.simrate
-        self.r_foot_pos              /= self.simrate
+        self.l_foot_frc /= self.simrate
+        self.r_foot_frc /= self.simrate
+        self.l_foot_pos /= self.simrate
+        self.r_foot_pos /= self.simrate
 
         # Create lists for foot positions, velocities, and forces
         foot_pos = np.append(self.l_foot_pos, self.r_foot_pos)
@@ -193,8 +200,8 @@ class CassieEnv:
         height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_vel, foot_grf) \
-                 - self.compute_cost(qpos, foot_vel, foot_grf) if height_in_bounds else 0.0
+        reward = self.compute_reward(qpos, qvel, foot_pos) \
+                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -204,38 +211,24 @@ class CassieEnv:
 
         return state, reward, done, {}
 
-    def reset(self, phase=None, full_reset=False):
+    def reset(self, phase=None, phase_reset_ratio=0.7):
         # reset variables
         self.timestep = 0
+        self.speed = random.randint(int(self.min_speed * 10), int(self.max_speed * 10)) / 10.
 
-        if full_reset:
-            self.sim.full_reset()
-            self.reset_cassie_state()
+        # phase reset ratio = 1 means use phase reset of the time while 0 means don't use phase reset
+        if np.random.rand() < phase_reset_ratio:
+            self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
 
-            # TODO: Find a better way to do this
-            self.full_reset = True
+            # get the corresponding state from the reference trajectory for the current phase
+            qpos, qvel = self.get_ref_state(self.phase)
+
+            self.sim.set_qpos(qpos)
+            self.sim.set_qvel(qvel)
 
         else:
-            # TODO: make the reset ratio a variable and speed
-            if np.random.rand() < 0.7:
-                self.phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-
-                # get the corresponding state from the reference trajectory for the current phase
-                qpos, qvel = self.get_ref_state(self.phase)
-
-                self.sim.set_qpos(qpos)
-                self.sim.set_qvel(qvel)
-
-                # TODO: Find a better way to do this
-                self.full_reset = False
-
-            else:
-                self.sim.full_reset()
-                self.reset_cassie_state()
-
-                # TODO: Find a better way to do this
-                self.full_reset = True
-
+            self.sim.full_reset()
+            self.reset_cassie_state()
 
         return self.get_full_state()
 
@@ -252,10 +245,9 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_vel, foot_grf, grf_tolerance=25,
-                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
+    def compute_reward(self, qpos, qvel, foot_pos, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
 
-        left_foot_pos  = foot_pos[:3]
+        left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
 
         # midfoot position
@@ -281,25 +273,21 @@ class CassieEnv:
         z_target_pos = self.target_height
 
         if qpos[2] < z_target_pos - height_thresh:
-            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
+            z_com_pos = np.exp(-100 * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
         elif qpos[2] > z_target_pos + 0.1:
-            z_com_pos = np.exp(-10 * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
+            z_com_pos = np.exp(-100 * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
         else:
             z_com_pos = 1.
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        x_com_vel = np.exp(-multiplier * (q) ** 2)
-        r_com_vel = np.exp(-np.linalg.norm(qvel[:3]) ** 2)
+        target_speed = np.array([self.speed, 0, 0])
+        r_com_vel = np.exp(-np.linalg.norm(target_speed - qvel[:3]) ** 2)
 
-        # 4. Foot Placement
-        # 4a. Foot Alignment
-        r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
-
-        # 4b. Feet Width
-        width_thresh = 0.0254 # m = 2.54 cm = 1 in
-        target_width = 0.13   # m = 13 cm
+        # 4. Feet Width
+        width_thresh = 0.02     # m = 2 cm
+        target_width = 0.18     # m = 18 cm seems to be optimal
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
@@ -309,56 +297,35 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else r_foot_width
-
-        # 5. Foot/Pelvis Orientation
+        # 5. Foot/Pelvis Orientation (may need to be revisited when doing turning)
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
         foot_yaw = np.array([qpos[8], qpos[22]])
-        left_foot_orient  = np.exp(-multiplier * (foot_yaw[0] - pelvis_yaw) ** 2)
+        left_foot_orient = np.exp(-multiplier * (foot_yaw[0] - pelvis_yaw) ** 2)
         right_foot_orient = np.exp(-multiplier * (foot_yaw[1] - pelvis_yaw) ** 2)
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
-        # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
-        # target_grf = (foot_grf[2] + foot_grf[5]) / 2.
-        target_grf = self.weight / 2.
-        left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
-        right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
-
-        r_grf = 0.5 * left_grf + 0.5 * right_grf
-
-        # B. Target/Imitation Reward
-        target_pos = np.array([0.0, 0.0, 1.01,
-                               1.0, 0.0, 0.0, 0.0,
-                               0.0045, 0.0, 0.4973,
-                               0.9784830934748516, -0.016399716640763992, 0.017869691242100763, -0.2048964597373501,
-                               -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968,
-                               -0.0045, 0.0, 0.4973,
-                               0.978614127766972, 0.0038600557257107214, -0.01524022001550036, -0.20510296096975877,
-                               -1.1997, 0.0, 1.4267, 0.0, -1.5244, 1.5244, -1.5968])
-        r_target_joint_pos = np.exp(-np.linalg.norm(qpos - target_pos) ** 2)
+        # 6. TODO: Symmetric Actions (only valid for non-turning actions)
 
         # Total Reward
         reward = (rw[0] * r_pose
                   + rw[1] * r_com_pos
                   + rw[2] * r_com_vel
-                  + rw[3] * r_foot_placement
-                  + rw[4] * r_fp_orient
-                  + rw[5] * r_grf
-                  + rw[6] * r_target_joint_pos)
+                  + rw[3] * r_foot_width
+                  + rw[4] * r_fp_orient)
 
-        print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}] Target [{:.3f}]'.format(r_pose,
-                                                                                                               r_com_pos,
-                                                                                                               r_com_vel,
-                                                                                                               r_foot_placement,
-                                                                                                               r_fp_orient,
-                                                                                                               r_grf,
-                                                                                                               r_target_joint_pos))
+        if self.debug:
+            print('Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}]]'.format(r_pose,
+                                                                                       r_com_pos,
+                                                                                       r_com_vel,
+                                                                                       r_foot_width,
+                                                                                       r_fp_orient))
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, foot_grf, cw=(0, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
+        # TODO: Only valid for walking gaits
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
         # 2. Power Consumption
@@ -394,8 +361,7 @@ class CassieEnv:
         # estimate power
         power_estimate = np.sum(motor_powers) + np.sum(power_losses)
 
-        power_threshold = 150  # Watts (Positive Work only)
-        c_power = 1. / (1. + np.exp(-(power_estimate - power_threshold)))
+        c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
 
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
@@ -440,7 +406,7 @@ class CassieEnv:
         ext_state = [self.speed]
 
         if self.clock_based:
-            # Clock is muted for standing
+            # TODO: Change this to the proper clock cycle
             clock = [0., 0.]
 
             # Concatenate clock with ext_state

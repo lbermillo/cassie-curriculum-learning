@@ -211,37 +211,30 @@ class CassieEnv:
 
         return state, reward, done, {}
 
-    def reset(self, phase=None, speed=None, full_reset=False, reset_ratio=0.7):
+    def reset(self, phase=None, speed=None, phase_reset_ratio=0.7):
         # reset variables
         self.timestep = 0
 
-        if full_reset:
+        # phase reset ratio = 1 means use phase reset of the time while 0 means don't use phase reset
+        if np.random.rand() < phase_reset_ratio:
+            phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
+            speed = speed      if speed is not None else random.randint(int(self.min_speed * 10), int(self.max_speed * 10)) / 10.
+
+            # get the corresponding state from the reference trajectory for the current phase
+            qpos, qvel = self.get_ref_state(phase, speed)
+
+            self.sim.set_qpos(qpos)
+            self.sim.set_qvel(qvel)
+
+            # Tracking variable for Foot Alignment reward
+            self.full_reset = False
+
+        else:
             self.sim.full_reset()
             self.reset_cassie_state()
 
             # Tracking variable for Foot Alignment reward
             self.full_reset = True
-
-        else:
-            if np.random.rand() < reset_ratio:
-                phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-                speed = speed      if speed is not None else random.randint(int(self.min_speed * 10), int(self.max_speed * 10)) / 10.
-
-                # get the corresponding state from the reference trajectory for the current phase
-                qpos, qvel = self.get_ref_state(phase, speed)
-
-                self.sim.set_qpos(qpos)
-                self.sim.set_qvel(qvel)
-
-                # Tracking variable for Foot Alignment reward
-                self.full_reset = False
-
-            else:
-                self.sim.full_reset()
-                self.reset_cassie_state()
-
-                # Tracking variable for Foot Alignment reward
-                self.full_reset = True
 
         return self.get_full_state()
 

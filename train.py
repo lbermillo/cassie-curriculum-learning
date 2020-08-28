@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch
 from rl.agents import TD3
-from cassie.envs import cassie, cassie_standing
+from cassie.envs import cassie_standing, cassie_walking
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('--simrate', type=int, default=60,
                         help='Simulation rate in Hz (default: 60)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
-                        help='Disables clock and uses reference trajectories')
+                        help='Disables clock')
     parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
                         help='Disables state estimator')
     parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.5], dest='rcut',
@@ -33,13 +33,15 @@ if __name__ == '__main__':
     parser.add_argument('--fall_height', type=float, default=0.7,
                         help='Height in meters that the environment considers falling when it goes below this parameter'
                              ' (default: 0.7)')
-    parser.add_argument('--max_speed', type=float, default=1,
-                        help='Speed threshold to train on. Measured in m/s (default: 1)')
+    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
+                        help='Min and max speeds in m/s (default: [0, 1])')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Activates reward debug (default: False)')
 
     # Training parameters
     parser.add_argument('--training_steps', type=float, default=1e6,
@@ -52,8 +54,8 @@ if __name__ == '__main__':
                         help='Creates a seed to the specified value (default: None)')
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
-    parser.add_argument('--phase_reset', action='store_true', default=False,
-                        help='Starts the episode from a random walking phase')
+    parser.add_argument('--reset_ratio', type=float, default=0.7,
+                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0.7)')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -111,10 +113,10 @@ if __name__ == '__main__':
         torch.manual_seed(args.seed)
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
+    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}FH{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}FH{}CLK{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
@@ -128,10 +130,11 @@ if __name__ == '__main__':
         args.eps_steps,
         args.expl_noise,
         args.seed,
-        args.phase_reset,
-        args.max_speed,
+        args.reset_ratio,
+        args.speed,
         args.power_threshold,
         args.fall_height,
+        args.clock,
         args.tag)
 
     # create SummaryWriter instance to log information
@@ -148,8 +151,10 @@ if __name__ == '__main__':
                             fall_height=args.fall_height,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            max_speed=args.max_speed,
+                            min_speed=args.speed[0],
+                            max_speed=args.speed[1],
                             power_threshold=args.power_threshold,
+                            debug=args.debug,
                             config=args.config, )
 
     state_dim = env.observation_space.shape[0]
@@ -185,7 +190,7 @@ if __name__ == '__main__':
                 filename='{}. {}/{}'.format(int(args.env + 1),
                                             envs[args.env][0],
                                             agent_id) if args.save else None,
-                full_reset=not args.phase_reset, )
+                reset_ratio=args.reset_ratio, )
 
     if writer:
         # cleanup
