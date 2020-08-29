@@ -3,7 +3,7 @@
 import argparse
 
 import torch
-from cassie.envs import cassie, cassie_standing
+from cassie.envs import cassie_standing, cassie_walking
 from rl.agents import TD3
 
 # use GPU if available
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
+    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv))
 
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,

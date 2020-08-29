@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch
 from rl.agents import TD3
-from cassie.envs import cassie_standing, cassie_walking
+from cassie.envs import cassie_standing, cassie_walking, cassie_jumping
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
     # Environment parameters
     parser.add_argument('--env', '-e', type=int, default=0, dest='env',
-                        help='Cassie environment: [0] Standing, [1] Walking (default: Standing)')
+                        help='Cassie environment: [0] Standing, [1] Walking [2] Jumping(default: Standing)')
     parser.add_argument('--simrate', type=int, default=60,
                         help='Simulation rate in Hz (default: 60)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
@@ -113,7 +113,8 @@ if __name__ == '__main__':
         torch.manual_seed(args.seed)
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv))
+    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv),
+            ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
     agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}FH{}CLK{}]{}'.format(

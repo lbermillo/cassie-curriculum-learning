@@ -10,11 +10,11 @@ from cassie.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
-# Creating the Standing Environment
+# Creating the Jumping Environment
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=1.5, forces=(0, 0, 0), force_fq=100,
                  min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0, max_speed=1, power_threshold=150,
                  debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
@@ -351,7 +351,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 

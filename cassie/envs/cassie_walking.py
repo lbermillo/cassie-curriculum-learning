@@ -245,7 +245,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15, 0), multiplier=500):
+    def compute_reward(self, qpos, qvel, foot_pos, rw=(0.15, 0.15, 0.3, 0.2, 0.2, 0, 0), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
