@@ -53,19 +53,6 @@ class CassieEnv:
                                 0.0045, 0.0, 0.4973, -1.1997, -1.5968])
         self.offset_weight = target_action_weight
 
-        # Initialize Observation and Action Spaces (+1 is for speed input)
-        self.observation_size = 40 + 1
-
-        if self.clock_based:
-            # Add two more inputs for right and left clocks
-            self.observation_size += 2
-
-        if self.state_est:
-            self.observation_size += 6
-
-        self.observation_space = np.zeros(self.observation_size)
-        self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10))
-
         # tracking various variables for reward funcs
         self.l_foot_frc = np.zeros(3)
         self.r_foot_frc = np.zeros(3)
@@ -104,9 +91,9 @@ class CassieEnv:
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
         self.vel_idx = [6, 7, 8, 12, 18, 19, 20, 21, 25, 31]
 
-    @property
-    def dt(self):
-        return 1 / 2000 * self.simrate
+        # Initialize Observation and Action Spaces
+        self.observation_space = np.zeros(len(self.get_full_state()))
+        self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10))
 
     def close(self):
         if self.vis is not None:
