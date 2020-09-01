@@ -3,6 +3,7 @@
 import time
 import torch
 import pickle
+import argparse
 import platform
 import numpy as np
 
@@ -25,6 +26,17 @@ def isData():
     return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
 
 
+parser = argparse.ArgumentParser(description='Cassie Sim Controller')
+parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
+                    help='Provide path to existing model to load it (default=None)')
+parser.add_argument('--simrate', type=int, default=40,
+                        help='Simulation rate in Hz (default: 40)')
+parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+                        help='Size of the 2 hidden layers (default=[256, 256])')
+
+args = parser.parse_args()
+
+
 # Prevent latency issues by disabling multithreading in pytorch
 torch.set_num_threads(1)
 
@@ -35,13 +47,10 @@ state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
-# TODO: create args from terminal for policy parameters
-hidden_dim = (256, 256)
-checkpoint = torch.load("./results/1. Standing/Standing[RC[0.3]TW1.0]_TD3[ALR5e-05CLR8e-05HDN(256, "
-                        "256)BTCH1024TAU0.001]_Training[TS50000000ES200EXP0.1SNonePHSFalseSPD1PWR100FH0.7]100MultZPos"
-                        ".chkpt")
+# Load policy
+checkpoint = torch.load(args.load)
 
-policy = Actor(state_dim, action_dim, max_action, hidden_dim)
+policy = Actor(state_dim, action_dim, max_action, args.hidden)
 policy.load_state_dict(checkpoint['actor'])
 policy.eval()
 
@@ -92,7 +101,7 @@ try:
     tty.setcbreak(sys.stdin.fileno())
     while True:
         # Wait until next cycle time
-        while time.monotonic() - t < 60 / 2000:
+        while time.monotonic() - t < args.simrate / 2000:
             time.sleep(0.001)
         t = time.monotonic()
         tt = time.monotonic() - t0

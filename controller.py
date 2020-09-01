@@ -4,6 +4,7 @@ import sys
 import time
 import torch
 import pickle
+import argparse
 import platform
 import numpy as np
 
@@ -13,6 +14,16 @@ from cassie.envs import cassie_standing
 from cassie.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
+
+parser = argparse.ArgumentParser(description='Cassie Sim Controller')
+parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
+                    help='Provide path to existing model to load it (default=None)')
+parser.add_argument('--simrate', type=int, default=40,
+                        help='Simulation rate in Hz (default: 40)')
+parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+                        help='Size of the 2 hidden layers (default=[256, 256])')
+
+args = parser.parse_args()
 
 # Prevent latency issues by disabling multithreading in pytorch
 torch.set_num_threads(1)
@@ -25,12 +36,9 @@ action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
 # TODO: create args from terminal for policy parameters
-hidden_dim = (256, 256)
-checkpoint = torch.load("./results/1. Standing/Standing[RC[0.3]TW1.0]_TD3[ALR5e-05CLR8e-05HDN(256, "
-                        "256)BTCH1024TAU0.001]_Training[TS50000000ES200EXP0.1SNonePHSFalseSPD1PWR100FH0.7]100MultZPos"
-                        ".chkpt")
+checkpoint = torch.load(args.load)
 
-policy = Actor(state_dim, action_dim, max_action, hidden_dim)
+policy = Actor(state_dim, action_dim, max_action, args.hidden)
 policy.load_state_dict(checkpoint['actor'])
 policy.eval()
 
@@ -83,12 +91,11 @@ sto_count = 0
 operation_mode = 0
 
 D_mult = 1
-simrate = 60
 orient_add = 0
 
 while True:
     # Wait until next cycle time
-    while time.monotonic() - t < simrate/2000:
+    while time.monotonic() - t < args.simrate / 2000:
         time.sleep(0.001)
     t = time.monotonic()
     tt = time.monotonic() - t0
@@ -186,21 +193,22 @@ while True:
         # Measure delay
         print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))
     #------------------------------- TODO: 1: Walking/Running ---------------------------
-    elif operation_mode == 1:
-        print('Startup Standing. Height = ' + str(standing_height))
-        #Do nothing
-        # Reassign with new multiplier on damping
-        for i in range(5):
-            u.leftLeg.motorPd.pGain[i] = 0.0
-            u.leftLeg.motorPd.dGain[i] = 0.0
-            u.rightLeg.motorPd.pGain[i] = 0.0
-            u.rightLeg.motorPd.dGain[i] = 0.0
+    # elif operation_mode == 1:
 
-        # Send action
-        for i in range(5):
-            u.leftLeg.motorPd.pTarget[i] = 0.0
-            u.rightLeg.motorPd.pTarget[i] = 0.0
-        cassie.send_pd(u)
+        # print('Startup Standing. Height = ' + str(standing_height))
+        # #Do nothing
+        # # Reassign with new multiplier on damping
+        # for i in range(5):
+        #     u.leftLeg.motorPd.pGain[i] = 0.0
+        #     u.leftLeg.motorPd.dGain[i] = 0.0
+        #     u.rightLeg.motorPd.pGain[i] = 0.0
+        #     u.rightLeg.motorPd.dGain[i] = 0.0
+        #
+        # # Send action
+        # for i in range(5):
+        #     u.leftLeg.motorPd.pTarget[i] = 0.0
+        #     u.rightLeg.motorPd.pTarget[i] = 0.0
+        # cassie.send_pd(u)
 
     #------------------------------- Shutdown Damping ---------------------------
     elif operation_mode == 2:

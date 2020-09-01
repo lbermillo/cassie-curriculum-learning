@@ -232,19 +232,6 @@ class CassieEnv:
 
         return self.get_full_state()
 
-    def reset_cassie_state(self):
-        # Only reset parts of cassie_state that is used in get_full_state
-        self.cassie_state.pelvis.position[:] = [0, 0, 1.01]
-        self.cassie_state.pelvis.orientation[:] = [1, 0, 0, 0]
-        self.cassie_state.pelvis.rotationalVelocity[:] = np.zeros(3)
-        self.cassie_state.pelvis.translationalVelocity[:] = np.zeros(3)
-        self.cassie_state.pelvis.translationalAcceleration[:] = np.zeros(3)
-        self.cassie_state.terrain.height = 0
-        self.cassie_state.motor.position[:] = [0.0045, 0, 0.4973, -1.1997, -1.5968, 0.0045, 0, 0.4973, -1.1997, -1.5968]
-        self.cassie_state.motor.velocity[:] = np.zeros(10)
-        self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
-        self.cassie_state.joint.velocity[:] = np.zeros(6)
-
     def compute_reward(self, qpos, qvel, foot_pos, rw=(0.15, 0.15, 0.3, 0.2, 0.2, 0, 0), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
@@ -322,6 +309,19 @@ class CassieEnv:
                                                                                        r_fp_orient))
 
         return reward
+
+    def reset_cassie_state(self):
+        # Only reset parts of cassie_state that is used in get_full_state
+        self.cassie_state.pelvis.position[:] = [0, 0, 1.01]
+        self.cassie_state.pelvis.orientation[:] = [1, 0, 0, 0]
+        self.cassie_state.pelvis.rotationalVelocity[:] = np.zeros(3)
+        self.cassie_state.pelvis.translationalVelocity[:] = np.zeros(3)
+        self.cassie_state.pelvis.translationalAcceleration[:] = np.zeros(3)
+        self.cassie_state.terrain.height = 0
+        self.cassie_state.motor.position[:] = [0.0045, 0, 0.4973, -1.1997, -1.5968, 0.0045, 0, 0.4973, -1.1997, -1.5968]
+        self.cassie_state.motor.velocity[:] = np.zeros(10)
+        self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
+        self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_cost(self, qpos, foot_grf, cw=(0, 0.1, 0.5)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
