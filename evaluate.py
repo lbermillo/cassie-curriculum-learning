@@ -34,6 +34,8 @@ if __name__ == "__main__":
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--reduced_inputs', action='store_true', default=False,
+                        help='Trains with inputs that are directly measured only (default: False)')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
 
@@ -71,6 +73,7 @@ if __name__ == "__main__":
                             force_fq=args.force_fq,
                             min_speed=args.speed[0],
                             max_speed=args.speed[1],
+                            reduced_input=args.reduced_input,
                             config=args.config,
                             debug=args.debug)
 

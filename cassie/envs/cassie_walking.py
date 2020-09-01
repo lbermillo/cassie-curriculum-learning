@@ -15,8 +15,8 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0.5, max_speed=2.0, power_threshold=150, debug=False,
-                 config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0.5, max_speed=2.0, power_threshold=150,
+                 reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
         self.config = config
@@ -37,6 +37,7 @@ class CassieEnv:
         self.max_speed = max_speed
         self.target_height = target_height
         self.power_threshold = power_threshold
+        self.reduced_input = reduced_input
         self.debug = debug
 
         # Cassie properties
@@ -415,30 +416,33 @@ class CassieEnv:
         if self.state_est:
             # Use state estimator
             robot_state = np.concatenate([
-                [self.cassie_state.pelvis.position[2] - self.cassie_state.terrain.height],  # pelvis height
-                self.cassie_state.pelvis.orientation[:],  # pelvis orientation
-                self.cassie_state.motor.position[:],  # actuated joint positions
 
-                self.cassie_state.pelvis.translationalVelocity[:],  # pelvis translational velocity
-                self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-                self.cassie_state.motor.velocity[:],  # actuated joint velocities
+                # Pelvis States
+                self.cassie_state.pelvis.orientation[:],
+                self.cassie_state.pelvis.rotationalVelocity[:],
 
-                self.cassie_state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
+                # Motor States
+                self.cassie_state.motor.position[:],
+                self.cassie_state.motor.velocity[:],
 
-                self.cassie_state.joint.position[:],  # unactuated joint positions
-                self.cassie_state.joint.velocity[:]  # unactuated joint velocities
             ])
 
-            # robot_state = np.concatenate([
-            #     self.cassie_state.pelvis.orientation[:],  # pelvis orientation
-            #     self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-            #
-            #     self.cassie_state.motor.position[:],  # actuated joint positions
-            #     self.cassie_state.motor.velocity[:],  # actuated joint velocities
-            #
-            #     self.cassie_state.joint.position[:],  # unactuated joint positions
-            #     self.cassie_state.joint.velocity[:]  # unactuated joint velocities
-            # ])
+            if not self.reduced_input:
+                # Use state estimator
+                robot_state = np.concatenate([
+                    [self.cassie_state.pelvis.position[2] - self.cassie_state.terrain.height],  # pelvis height
+                    self.cassie_state.pelvis.orientation[:],  # pelvis orientation
+                    self.cassie_state.motor.position[:],  # actuated joint positions
+
+                    self.cassie_state.pelvis.translationalVelocity[:],  # pelvis translational velocity
+                    self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
+                    self.cassie_state.motor.velocity[:],  # actuated joint velocities
+
+                    self.cassie_state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
+
+                    self.cassie_state.joint.position[:],  # unactuated joint positions
+                    self.cassie_state.joint.velocity[:]  # unactuated joint velocities
+                ])
 
             # Concatenate robot_state to ext_state
             ext_state = np.concatenate((robot_state, ext_state))

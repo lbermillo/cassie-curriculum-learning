@@ -40,6 +40,8 @@ if __name__ == '__main__':
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--reduced_inputs', action='store_true', default=False,
+                        help='Trains with inputs that are directly measured only (default: False)')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
 
@@ -117,7 +119,7 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}PHS{}SPD{}PWR{}FH{}CLK{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}RST{}SPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
@@ -136,6 +138,7 @@ if __name__ == '__main__':
         args.power_threshold,
         args.fall_height,
         args.clock,
+        args.reduced_input,
         args.tag)
 
     # create SummaryWriter instance to log information
@@ -155,6 +158,7 @@ if __name__ == '__main__':
                             min_speed=args.speed[0],
                             max_speed=args.speed[1],
                             power_threshold=args.power_threshold,
+                            reduced_input=args.reduced_input,
                             debug=args.debug,
                             config=args.config, )
 
