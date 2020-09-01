@@ -40,7 +40,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
-    parser.add_argument('--reduced_inputs', action='store_true', default=False,
+    parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
