@@ -93,7 +93,7 @@ class CassieEnv:
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
-        self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10))
+        self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10), dtype=np.float32)
 
     def close(self):
         if self.vis is not None:
