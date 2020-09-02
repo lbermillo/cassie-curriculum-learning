@@ -187,7 +187,7 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_vel, foot_grf) if height_in_bounds else 0.0
+                 - self.compute_cost(qpos, action, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -239,7 +239,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.15, 0.15, 0.15, 0.2, 0.2, 0.15), multiplier=500):
+                       rw=(1/6, 1/6, 1/6, 1/6, 1/6, 1/6), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -339,7 +339,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_vel, foot_grf, cw=(0.3, 0.1, 0.5)):
+    def compute_cost(self, qpos, policy_action, foot_grf, cw=(0.3, 0.1, 0.5, 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -381,8 +381,11 @@ class CassieEnv:
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
 
+        # 4. Toe Movement (Prevent the policy from unnecessary toe/foot movements)
+        c_toe = 1 - np.exp(-500 * np.linalg.norm([policy_action[4], policy_action[9]]) ** 2)
+
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_toe
 
         return cost
 
