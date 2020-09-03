@@ -384,8 +384,6 @@ class CassieEnv:
         # 4. Toe Movement (Prevent the policy from unnecessary toe/foot movements)
         c_toe = 1 - np.exp(-10 * np.linalg.norm([policy_action[4], policy_action[9]]) ** 2)
 
-        print(c_toe, policy_action[4], policy_action[9])
-
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_toe
 
