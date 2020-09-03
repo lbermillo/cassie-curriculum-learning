@@ -382,7 +382,9 @@ class CassieEnv:
         c_fall = 1 if qpos[2] < self.fall_height else 0
 
         # 4. Toe Movement (Prevent the policy from unnecessary toe/foot movements)
-        c_toe = 1 - np.exp(-500 * np.linalg.norm([policy_action[4], policy_action[9]]) ** 2)
+        c_toe = 1 - np.exp(-10 * np.linalg.norm([policy_action[4], policy_action[9]]) ** 2)
+
+        print(c_toe, policy_action[4], policy_action[9])
 
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_toe
