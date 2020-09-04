@@ -387,6 +387,9 @@ class CassieEnv:
         # 4. Foot Height Cost
         c_foot_height = 1 - np.exp(-1e4 * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2) if self.full_reset else 0
 
+        # TODO: 4. Foot Energy Cost
+        c_foot_energy = 1 - np.exp(-1e4 * np.linalg.norm([foot_pos[2], foot_pos[5]]) ** 2) if self.full_reset else 0
+
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_foot_height
 
