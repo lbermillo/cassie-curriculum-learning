@@ -15,8 +15,8 @@ if __name__ == "__main__":
     # Environment parameters
     parser.add_argument('--env', '-e', type=int, default=0, dest='env',
                         help='Cassie environment: [0] Standing, [1] Walking (default: Standing)')
-    parser.add_argument('--simrate', type=int, default=40,
-                        help='Simulation rate in Hz (default: 40)')
+    parser.add_argument('--simrate', type=int, default=60,
+                        help='Simulation rate in Hz (default: 60)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock and uses reference trajectories')
     parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
@@ -31,6 +31,8 @@ if __name__ == "__main__":
                         help='Frequency forces applied to the pelvis (default: 10 timesteps)')
     parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
                         help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--power_threshold', type=int, default=150,
+                        help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
@@ -73,6 +75,7 @@ if __name__ == "__main__":
                             force_fq=args.force_fq,
                             min_speed=args.speed[0],
                             max_speed=args.speed[1],
+                            power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             config=args.config,
                             debug=args.debug)

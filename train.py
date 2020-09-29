@@ -119,19 +119,17 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}HDN{}BTCH{}TAU{}]_Training[TS{}ES{}EXP{}S{}RST{}SPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}SPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
         args.algo.upper(),
         args.alr,
         args.clr,
-        args.hidden,
         args.batch,
-        args.tau,
+        args.discount,
         int(args.training_steps),
         args.eps_steps,
-        args.expl_noise,
         args.seed,
         args.reset_ratio,
         args.speed,

@@ -6,7 +6,7 @@ import numpy as np
 from math import floor
 from copy import deepcopy
 from cassie.trajectory import CassieTrajectory
-from cassie.quaternion_function import quaternion2euler
+from cassie.utils.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
