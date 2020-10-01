@@ -58,6 +58,9 @@ if __name__ == '__main__':
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
     parser.add_argument('--reset_ratio', type=float, default=0.7,
                         help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0.7)')
+    parser.add_argument('--adaptive_discount', action='store_true', default=False,
+                        help='Activates adaptive discount factor starting from 0.005 to 0.99. '
+                             'If true, discount factor will be overridden (default=False)')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -127,7 +130,7 @@ if __name__ == '__main__':
         args.alr,
         args.clr,
         args.batch,
-        args.discount,
+        args.discount if not args.adaptive_discount else '(adaptive)',
         int(args.training_steps),
         args.eps_steps,
         args.seed,
@@ -193,7 +196,8 @@ if __name__ == '__main__':
                 filename='{}. {}/{}'.format(int(args.env + 1),
                                             envs[args.env][0],
                                             agent_id) if args.save else None,
-                reset_ratio=args.reset_ratio, )
+                reset_ratio=args.reset_ratio,
+                adaptive_discount=args.adaptive_discount)
 
     if writer:
         # cleanup

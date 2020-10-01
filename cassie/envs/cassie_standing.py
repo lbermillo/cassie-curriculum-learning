@@ -244,7 +244,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.25, 0.25, 0.25, 0, 0.25, 0), multiplier=500):
+                       rw=(0.2, 0.2, 0.2, 0, 0.2, 0.2), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -315,9 +315,7 @@ class CassieEnv:
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
         right_grf = np.exp(-(np.linalg.norm(foot_grf[5] - target_grf) / grf_tolerance) ** 2)
 
-        # activate grf reward when pelvis velocity is 0 (pelvis velocity >= 0.99) so in doesn't try to drag its feet
-        # also gives agent incentive to stop pelvis
-        r_grf = 0.5 * left_grf + 0.5 * right_grf if r_com_vel > 0.99 else 0
+        r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # Total Reward
         reward = (rw[0] * r_pose
@@ -337,7 +335,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, policy_action, cw=(0.2, 0.1, 0.4, 0.1, 0.1, 0.1)):
+    def compute_cost(self, qpos, foot_grf, policy_action, cw=(0.2, 0, 0.4, 0.1, 0.1, 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -355,7 +353,7 @@ class CassieEnv:
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm([foot_grf[0], foot_grf[1], foot_grf[3], foot_grf[4]]) ** 2)
 
         # 6. Torque Cost (Take the squared difference between current input torques and previous inputs)
-        c_torque = 1 - np.exp(-10 * np.linalg.norm(power_info['input_torques'] - self.previous_torque) ** 2)
+        c_torque = 1 - np.exp(-np.linalg.norm(power_info['input_torques'] - self.previous_torque) ** 2)
 
         # Update previous torque with current one
         self.previous_torque = power_info['input_torques']

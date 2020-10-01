@@ -33,6 +33,8 @@ parser.add_argument('--simrate', type=int, default=40,
                         help='Simulation rate in Hz (default: 40)')
 parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
+parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
+                        help='Disables clock')
 parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
 
@@ -44,7 +46,8 @@ torch.set_num_threads(1)
 
 # Prepare model
 env = cassie_standing.CassieEnv(simrate=args.simrate,
-                                reduced_input=args.reduced_input)
+                                reduced_input=args.reduced_input,
+                                clock_based=args.clock)
 
 state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
@@ -191,13 +194,11 @@ try:
                 else:
                     pass
 
-        ext_state = [speed]
-
         # Clock is muted for standing
         clock = [0., 0.]
 
         # Concatenate clock with ext_state
-        ext_state = np.concatenate((clock, ext_state))
+        ext_state = np.concatenate((clock, [speed])) if args.clock else [speed]
 
         # Use state estimator
         if args.reduced_input:
@@ -210,6 +211,10 @@ try:
                 # Motor States
                 state.motor.position[:],
                 state.motor.velocity[:],
+
+                # Foot States
+                state.leftFoot.position[:],
+                state.rightFoot.position[:],
 
             ])
         else:
