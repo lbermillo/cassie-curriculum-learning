@@ -188,7 +188,7 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) \
-                 - self.compute_cost(qpos, foot_grf, action) if height_in_bounds else 0.0
+                 - self.compute_cost(qpos, foot_grf) if height_in_bounds else 0.0
 
         # Done Condition
         done = True if not height_in_bounds or reward < self.reward_cutoff else False
@@ -244,7 +244,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.2, 0.2, 0.2, 0, 0.2, 0.2), multiplier=500):
+                       rw=(0.2, 0.2, 0.2, 0.2, 0.2, 0), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -299,7 +299,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width if self.full_reset else r_foot_width
+        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
@@ -335,7 +335,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, policy_action, cw=(0.2, 0, 0.4, 0.1, 0.1, 0.1)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.2, 0.1, 0.4, 0.1, 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -346,24 +346,21 @@ class CassieEnv:
         # 3. Falling
         c_fall = 1 if qpos[2] < self.fall_height else 0
 
-        # 4. Toe Movement (only use for full resets)
-        c_toe = 1 - np.exp(-np.linalg.norm([policy_action[4], policy_action[9]]) ** 2) if self.full_reset else 0
-
-        # 5. Foot Drag (X-Y GRFs)
+        # 4. Foot Drag (X-Y GRFs)
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm([foot_grf[0], foot_grf[1], foot_grf[3], foot_grf[4]]) ** 2)
 
-        # 6. Torque Cost (Take the squared difference between current input torques and previous inputs)
+        # 5. Torque Cost (Take the squared difference between current input torques and previous inputs)
         c_torque = 1 - np.exp(-np.linalg.norm(power_info['input_torques'] - self.previous_torque) ** 2)
 
         # Update previous torque with current one
         self.previous_torque = power_info['input_torques']
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_toe + cw[4] * c_drag + cw[5] * c_torque
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag + cw[4] * c_torque
 
         if self.debug:
-            print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Toe [{:.3f}], Drag [{:.3f}], '
-                  'Torque [{:.3f}]]\n'.format(c_contact, c_power, c_fall, c_toe, c_drag, c_torque))
+            print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Drag [{:.3f}], '
+                  'Torque [{:.3f}]]\n'.format(c_contact, c_power, c_fall, c_drag, c_torque))
 
         return cost
 
@@ -419,9 +416,6 @@ class CassieEnv:
                 self.cassie_state.motor.position[:],
                 self.cassie_state.motor.velocity[:],
 
-                # Foot States
-                self.cassie_state.leftFoot.position[:],
-                self.cassie_state.rightFoot.position[:],
             ])
 
             if not self.reduced_input:

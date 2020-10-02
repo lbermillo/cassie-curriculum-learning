@@ -171,8 +171,8 @@ class Agent:
         episode = 0
         best_score = 0.0
         if adaptive_discount:
-            self.model.discount = 1e-2
-            discount_rate = (0.99 - 1e-2) / (0.75 * training_steps)
+            self.model.discount = 0.2
+            discount_rate = (0.99 - self.model.discount) / (0.5 * training_steps)
 
         while self.total_steps < training_steps:
             # collect experiences
