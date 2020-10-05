@@ -16,7 +16,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_height=0.4, min_speed=0, max_speed=1, power_threshold=150,
+                 min_height=0.6, max_height=3.0, fall_threshold=0.2, min_speed=0, max_speed=1, power_threshold=150,
                  reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
 
         # Using CassieSim
@@ -32,7 +32,7 @@ class CassieEnv:
         self.force_fq = force_fq
         self.min_height = min_height
         self.max_height = max_height
-        self.fall_height = fall_height
+        self.fall_threshold = fall_threshold
         self.min_speed = min_speed
         self.max_speed = max_speed
         self.target_height = target_height
@@ -244,7 +244,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.2, 0.2, 0.2, 0.2, 0.2, 0), multiplier=500):
+                       rw=(0.2, 0.2, 0.2, 0.2, 0.2), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -309,7 +309,7 @@ class CassieEnv:
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
-        # 6. Ground Force Modulation (Even Vertical Foot Force Distribution)
+        # 6. Ground Force Modulation (Only for reference and debugging)
         # target_grf = (foot_grf[2] + foot_grf[5]) / 2.
         target_grf = self.weight / 2.
         left_grf = np.exp(-(np.linalg.norm(foot_grf[2] - target_grf) / grf_tolerance) ** 2)
@@ -322,8 +322,7 @@ class CassieEnv:
                   + rw[1] * r_com_pos
                   + rw[2] * r_com_vel
                   + rw[3] * r_foot_placement
-                  + rw[4] * r_fp_orient
-                  + rw[5] * r_grf)
+                  + rw[4] * r_fp_orient)
 
         if self.debug:
             print('Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(r_pose,
@@ -335,7 +334,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.2, 0.1, 0.4, 0.1, 0.1)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.4, 0., 0., 0.)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -344,7 +343,7 @@ class CassieEnv:
         c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
 
         # 3. Falling
-        c_fall = 1 if qpos[2] < self.fall_height else 0
+        c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
         # 4. Foot Drag (X-Y GRFs)
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm([foot_grf[0], foot_grf[1], foot_grf[3], foot_grf[4]]) ** 2)
@@ -352,11 +351,15 @@ class CassieEnv:
         # 5. Torque Cost (Take the squared difference between current input torques and previous inputs)
         c_torque = 1 - np.exp(-np.linalg.norm(power_info['input_torques'] - self.previous_torque) ** 2)
 
+        # 6. Toe Cost
+        c_toe = 1 - np.exp(-2.5e-5 * np.linalg.norm([self.cassie_state.motor.torque[4],
+                                                     self.cassie_state.motor.torque[9]]) ** 4)
+
         # Update previous torque with current one
         self.previous_torque = power_info['input_torques']
 
         # Total Cost
-        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag + cw[4] * c_torque
+        cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag + cw[4] * c_torque + cw[5] * c_toe
 
         if self.debug:
             print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Drag [{:.3f}], '
