@@ -145,6 +145,7 @@ while True:
 
     #------------------------------- 0: Standing ---------------------------
     if operation_mode == 0:
+        speed = 0
 
         # Reassign because it might have been changed by the damping mode
         for i in range(5):
@@ -174,23 +175,24 @@ while True:
         new_translationalVelocity = rotate_by_quaternion(state.pelvis.translationalVelocity[:], iquaternion)
 
         # Use state estimator
-        if args.reduced_input:
-            robot_state = np.concatenate([
 
-                # Pelvis States
-                new_orient,
-                state.pelvis.rotationalVelocity[:],
+        robot_state = np.concatenate([
 
-                # Motor States
-                state.motor.position[:],
-                state.motor.velocity[:],
+            # Pelvis States
+            new_orient,
+            state.pelvis.rotationalVelocity[:],
 
-                # Foot States
-                # state.leftFoot.position[:],
-                # state.rightFoot.position[:],
+            # Motor States
+            state.motor.position[:],
+            state.motor.velocity[:],
 
-            ])
-        else:
+            # Foot States
+            # state.leftFoot.position[:],
+            # state.rightFoot.position[:],
+
+        ])
+
+        if not args.reduced_input:
 
             # Use state estimator
             robot_state = np.concatenate([
