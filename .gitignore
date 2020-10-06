@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # C extensions
-*.so
+#*.so
 
 # Distribution / packaging
 .Python
@@ -139,6 +139,9 @@ cython_debug/
 
 # Tensorboard runs
 runs/
+
+# Checkpoints
+results/
 
 # No clue what these are
 .DS_Store

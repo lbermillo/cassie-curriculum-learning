@@ -1,14 +1,12 @@
-from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
-from cassie.trajectory import CassieTrajectory
-
+import os
+import pickle
+import random
 from math import floor
 
-import numpy as np
-import os
-import random
 import gym
-
-import pickle
+import numpy as np
+from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
+from cassie.trajectory import CassieTrajectory
 
 
 class CassieIKTrajectory:
@@ -24,7 +22,8 @@ class CassieIKTrajectory:
 
 
 class CassieEnv:
-    def __init__(self, traj, simrate=60, clock_based=False, state_est=False, target_action_weight=1.0, reward_cutoff=0.3, max_speed=10, config="cassie/cassiemujoco/cassie.xml"):
+    def __init__(self, traj='walking', simrate=60, clock_based=False, state_est=False, target_action_weight=1.0,
+                 reward_cutoff=0.3, max_speed=10, forces=(0, 0, 0), config="cassie/cassiemujoco/cassie.xml"):
         self.config = config
         self.sim = CassieSim(self.config)
         self.vis = None

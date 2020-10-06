@@ -127,9 +127,9 @@ class TD3:
         self.critic.load_state_dict(checkpoint['critic'])
 
         # load actor/critic traget state dicts
-        self.actor_target.load_state_dict(checkpoint['actor_target'])
-        self.critic_target.load_state_dict(checkpoint['critic_target'])
+        # self.actor_target.load_state_dict(checkpoint['actor_target'])
+        # self.critic_target.load_state_dict(checkpoint['critic_target'])
 
         # load actor/critic optimizer state dicts
-        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        # self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        # self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])

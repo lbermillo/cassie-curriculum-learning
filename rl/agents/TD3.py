@@ -3,8 +3,8 @@ import time
 import numpy as np
 import torch
 
-from .algorithms.TD3 import TD3
-from .utils.ReplayMemory import ReplayMemory
+from rl.algorithms.TD3 import TD3
+from rl.utils.ReplayMemory import ReplayMemory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -12,7 +12,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Agent:
     def __init__(self, algorithm, state_dim, action_dim, max_action, hidden_dim=(256, 256), actor_lr=3e-4, critic_lr=3e-4,
                  discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4,
-                 capacity=1e6, batch_size=100, policy_update_freq=2, chkpt_pth=None, init_weights=False, writer=None):
+                 capacity=1e6, batch_size=100, policy_update_freq=2, termination_curriculum=None, chkpt_pth=None,
+                 init_weights=False, writer=None):
 
         self.action_dim = action_dim
         self.max_action = float(max_action)
@@ -44,6 +45,9 @@ class Agent:
 
         # initialize writer for logging
         self.writer = writer
+
+        # initialize parameters for Termination Curriculum
+        self.tc = termination_curriculum
 
     def policy(self, state, expl_noise=0.1):
         # select action randomly for the given steps
@@ -97,12 +101,12 @@ class Agent:
                 # update target networks
                 self.model.update_target_networks()
 
-    def collect(self, env, max_steps, noise=0.1):
+    def collect(self, env, max_steps, noise=0.1, reset_ratio=0.7):
         # initialize episode reward tracker for logging
         episode_reward = 0
 
         # reset environment
-        state = env.reset()
+        state = env.reset(phase_reset_ratio=reset_ratio)
         done = False
         step = 0
 
@@ -131,7 +135,7 @@ class Agent:
 
         return step, episode_reward
 
-    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False):
+    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False, reset_ratio=0):
         total_rewards = 0.
 
         # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
@@ -140,7 +144,7 @@ class Agent:
         for eps in range(eval_eps):
             with torch.no_grad():
                 episode_reward = 0
-                state = env.reset()
+                state = env.reset(phase_reset_ratio=reset_ratio)
                 done = False
                 step = 0
 
@@ -162,13 +166,17 @@ class Agent:
 
         return total_rewards / eval_eps
 
-    def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results', filename=None):
+    def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results',
+              filename=None, reset_ratio=0.7, adaptive_discount=False):
         episode = 0
         best_score = 0.0
+        if adaptive_discount:
+            self.model.discount = 0.2
+            discount_rate = (0.99 - self.model.discount) / (0.5 * training_steps)
 
         while self.total_steps < training_steps:
             # collect experiences
-            episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise)
+            episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise, reset_ratio=reset_ratio)
 
             if self.writer:
                 # log episode reward to tensorboard
@@ -180,6 +188,10 @@ class Agent:
             # evaluate current policy
             if episode % evaluate_interval == 0:
                 score = self.evaluate(env, render=False)
+
+                # update reward termination
+                if self.tc is not None:
+                    env.reward_cutoff = max(self.tc[0] - (self.total_steps / (2 * training_steps)), self.tc[1])
 
                 if self.writer:
                     # log eval rewards to tensorboard
@@ -195,3 +207,10 @@ class Agent:
                         self.model.save(directory, filename)
 
             episode += 1
+
+            if adaptive_discount and self.total_steps > self.batch_size:
+                # update discount factor for the next episode
+                self.model.discount += discount_rate
+
+
+

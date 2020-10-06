@@ -3,8 +3,8 @@
 import argparse
 
 import torch
-from cassie.envs import cassie, cassie_standing
-from rl.agent import Agent
+from cassie.envs import cassie_standing, cassie_walking
+from rl.agents import TD3
 
 # use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,13 +23,23 @@ if __name__ == "__main__":
                         help='Disables state estimator')
     parser.add_argument('--rcut', '-r', type=float, default=0.3, dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold (default: 0.3)')
-    parser.add_argument('--tw', type=float, default=0.,
-                        help='Weight multiplied to the action offset added to the policy action (default: 0.0)')
+    parser.add_argument('--tw', type=float, default=1.,
+                        help='Weight multiplied to the action offset added to the policy action (default: 1.0)')
     parser.add_argument('--forces', '-f', nargs='+', type=float, default=(0., 0., 0.),
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
+    parser.add_argument('--force_fq', type=int, default=10,
+                        help='Frequency forces applied to the pelvis (default: 10 timesteps)')
+    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
+                        help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--power_threshold', type=int, default=150,
+                        help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
                         help='Path to the configuration file to load in the simulation (default: '
                              'cassie/cassiemujoco/cassie.xml )')
+    parser.add_argument('--reduced_input', action='store_true', default=False,
+                        help='Trains with inputs that are directly measured only (default: False)')
+    parser.add_argument('--debug', action='store_true', default=False,
+                        help='Activates reward debug (default: False)')
 
     # Evaluation parameters
     parser.add_argument('--eval_episodes', type=int, default=10,
@@ -40,6 +50,8 @@ if __name__ == "__main__":
                         help='Renders Cassie simulation (default: False)')
     parser.add_argument('--print_stats', action='store_false', default=True,
                         help='Prints episode rewards (default: True)')
+    parser.add_argument('--reset_ratio', type=float, default=0,
+                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
@@ -52,30 +64,36 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie.CassieEnv))
+    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv))
 
-    # initialize environment
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
                             state_est=args.state_est,
                             reward_cutoff=args.rcut,
                             target_action_weight=args.tw,
                             forces=args.forces,
-                            config=args.config)
+                            force_fq=args.force_fq,
+                            min_speed=args.speed[0],
+                            max_speed=args.speed[1],
+                            power_threshold=args.power_threshold,
+                            reduced_input=args.reduced_input,
+                            config=args.config,
+                            debug=args.debug)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     max_action = env.action_space.high[0]
 
     # initialize agent
-    agent = Agent(args.algo,
-                  state_dim,
-                  action_dim,
-                  max_action,
-                  chkpt_pth=args.load, )
+    agent = TD3.Agent(args.algo,
+                      state_dim,
+                      action_dim,
+                      max_action,
+                      chkpt_pth=args.load, )
 
     agent.evaluate(env,
                    eval_eps=args.eval_episodes,
                    max_steps=args.eval_steps,
                    render=args.render,
-                   print_stats=args.print_stats, )
+                   print_stats=args.print_stats,
+                   reset_ratio=args.reset_ratio, )
