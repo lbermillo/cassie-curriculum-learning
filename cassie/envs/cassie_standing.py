@@ -17,7 +17,7 @@ class CassieEnv:
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
                  min_height=0.6, max_height=3.0, fall_threshold=0.2, min_speed=0, max_speed=1, power_threshold=150,
-                 reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking'):
+                 reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
         # Using CassieSim
         self.config = config
@@ -39,6 +39,7 @@ class CassieEnv:
         self.power_threshold = power_threshold
         self.reduced_input = reduced_input
         self.debug = debug
+        self.writer = writer
 
         # Cassie properties
         self.mass = np.sum(self.sim.get_body_mass())
@@ -324,7 +325,15 @@ class CassieEnv:
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient)
 
-        if self.debug:
+        if self.writer is not None and self.debug:
+            # log episode reward to tensorboard
+            self.writer.add_scalar('env_reward/pose', r_pose)
+            self.writer.add_scalar('env_reward/com_pos', r_com_pos)
+            self.writer.add_scalar('env_reward/com_vel', r_com_vel)
+            self.writer.add_scalar('env_reward/foot_placement', r_foot_placement)
+            self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient)
+            self.writer.add_scalar('env_reward/grf', r_grf)
+        else:
             print('Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(r_pose,
                                                                                                              r_com_pos,
                                                                                                              r_com_vel,
@@ -334,7 +343,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.4, 0., 0., 0.)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.4, 0., 0., 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -361,9 +370,17 @@ class CassieEnv:
         # Total Cost
         cost = cw[0] * c_contact + cw[1] * c_power + cw[2] * c_fall + cw[3] * c_drag + cw[4] * c_torque + cw[5] * c_toe
 
-        if self.debug:
+        if self.writer is not None and self.debug:
+            # log episode reward to tensorboard
+            self.writer.add_scalar('env_cost/foot_contact', c_contact)
+            self.writer.add_scalar('env_cost/power_consumption', c_power)
+            self.writer.add_scalar('env_cost/fall', c_fall)
+            self.writer.add_scalar('env_cost/foot_drag', c_drag)
+            self.writer.add_scalar('env_cost/torque', c_torque)
+            self.writer.add_scalar('env_cost/toe_usage', c_toe)
+        else:
             print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Drag [{:.3f}], '
-                  'Torque [{:.3f}]]\n'.format(c_contact, c_power, c_fall, c_drag, c_torque))
+                  'Torque [{:.3f}], Toe [{:.3f}],]\n'.format(c_contact, c_power, c_fall, c_drag, c_torque, c_toe))
 
         return cost
 

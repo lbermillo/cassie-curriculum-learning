@@ -161,7 +161,8 @@ if __name__ == '__main__':
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             debug=args.debug,
-                            config=args.config, )
+                            config=args.config,
+                            writer=writer, )
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
