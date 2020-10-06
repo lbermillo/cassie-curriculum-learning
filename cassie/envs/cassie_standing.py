@@ -333,7 +333,7 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient)
             self.writer.add_scalar('env_reward/grf', r_grf)
-        else:
+        elif self.debug:
             print('Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(r_pose,
                                                                                                              r_com_pos,
                                                                                                              r_com_vel,
@@ -378,7 +378,7 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/foot_drag', c_drag)
             self.writer.add_scalar('env_cost/torque', c_torque)
             self.writer.add_scalar('env_cost/toe_usage', c_toe)
-        else:
+        elif self.debug:
             print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Drag [{:.3f}], '
                   'Torque [{:.3f}], Toe [{:.3f}],]\n'.format(c_contact, c_power, c_fall, c_drag, c_torque, c_toe))
 
