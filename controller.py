@@ -62,7 +62,7 @@ if platform.node() == 'cassie':
                        local_addr='10.10.10.100', local_port='25011')
 else:
     cassie = CassieUdp() # local testing
-    
+
 
 # Connect to the simulator or robot
 print('Connecting...')
@@ -105,7 +105,7 @@ while True:
 
     if state is None:
         print('Missed a cycle')
-        continue	
+        continue
 
     if platform.node() == 'cassie':
         # Radio control
@@ -157,13 +157,27 @@ while True:
         # Concatenate clock with ext_state
         ext_state = np.concatenate((clock, ext_state))
 
+        # Update orientation
+        new_orient = state.pelvis.orientation[:]
+        new_translationalVelocity = state.pelvis.translationalVelocity[:]
+        quaternion = euler2quat(z=orient_add, y=0, x=0)
+        iquaternion = inverse_quaternion(quaternion)
+        new_orient = quaternion_product(iquaternion, state.pelvis.orientation[:])
+
+        # # pending offset to the estimated orientations
+        if new_orient[0] < 0:
+            new_orient = -new_orient
+
+        # modifying translation velocity
+        new_translationalVelocity = rotate_by_quaternion(state.pelvis.translationalVelocity[:], iquaternion)
+
         # Use state estimator
         robot_state = np.concatenate([
             [state.pelvis.position[2] - state.terrain.height],  # pelvis height
-            state.pelvis.orientation[:],  # pelvis orientation
+            new_orient,  # pelvis orientation
             state.motor.position[:],  # actuated joint positions
 
-            state.pelvis.translationalVelocity[:],  # pelvis translational velocity
+            new_translationalVelocity,  # pelvis translational velocity
             state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
             state.motor.velocity[:],  # actuated joint velocities
 
@@ -230,6 +244,6 @@ while True:
     #---------------------------- Other, should not happen -----------------------
     else:
         print('Error, In bad operation_mode with value: ' + str(operation_mode))
-    
+
     # Measure delay
     print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))
