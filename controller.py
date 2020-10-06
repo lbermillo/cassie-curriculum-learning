@@ -154,11 +154,10 @@ while True:
             u.rightLeg.motorPd.pGain[i] = P[i+5]
             u.rightLeg.motorPd.dGain[i] = D[i+5]
 
-        # Clock is muted for standing
-        clock = [0., 0.]
-
         # Concatenate clock with ext_state
-        ext_state = np.concatenate((clock, [speed])) if args.clock else [speed]
+        ext_state = np.concatenate(([0., 0.], [speed])) if args.clock else [speed]
+
+        print(args.clock, ext_state)
 
         # Update orientation
         new_orient = state.pelvis.orientation[:]
@@ -175,24 +174,23 @@ while True:
         new_translationalVelocity = rotate_by_quaternion(state.pelvis.translationalVelocity[:], iquaternion)
 
         # Use state estimator
+        if args.reduced_input:
+            robot_state = np.concatenate([
 
-        robot_state = np.concatenate([
+                # Pelvis States
+                new_orient,
+                state.pelvis.rotationalVelocity[:],
 
-            # Pelvis States
-            new_orient,
-            state.pelvis.rotationalVelocity[:],
+                # Motor States
+                state.motor.position[:],
+                state.motor.velocity[:],
 
-            # Motor States
-            state.motor.position[:],
-            state.motor.velocity[:],
+                # Foot States
+                # state.leftFoot.position[:],
+                # state.rightFoot.position[:],
 
-            # Foot States
-            # state.leftFoot.position[:],
-            # state.rightFoot.position[:],
-
-        ])
-
-        if not args.reduced_input:
+            ])
+        else:
 
             # Use state estimator
             robot_state = np.concatenate([
