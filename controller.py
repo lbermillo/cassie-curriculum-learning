@@ -18,8 +18,12 @@ from cassie.cassiemujoco.cassiemujoco_ctypes import *
 parser = argparse.ArgumentParser(description='Cassie Sim Controller')
 parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
                     help='Provide path to existing model to load it (default=None)')
-parser.add_argument('--simrate', type=int, default=40,
-                        help='Simulation rate in Hz (default: 40)')
+parser.add_argument('--simrate', type=int, default=60,
+                        help='Simulation rate in Hz (default: 60)')
+parser.add_argument('--reduced_input', action='store_true', default=False,
+                        help='Trains with inputs that are directly measured only (default: False)')
+parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
+                        help='Disables clock')
 parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
 
@@ -149,13 +153,11 @@ while True:
             u.rightLeg.motorPd.pGain[i] = P[i+5]
             u.rightLeg.motorPd.dGain[i] = D[i+5]
 
-        ext_state = [speed]
-
         # Clock is muted for standing
         clock = [0., 0.]
 
         # Concatenate clock with ext_state
-        ext_state = np.concatenate((clock, ext_state))
+        ext_state = np.concatenate((clock, [speed])) if args.clock else [speed]
 
         # Update orientation
         new_orient = state.pelvis.orientation[:]
@@ -172,20 +174,39 @@ while True:
         new_translationalVelocity = rotate_by_quaternion(state.pelvis.translationalVelocity[:], iquaternion)
 
         # Use state estimator
-        robot_state = np.concatenate([
-            [state.pelvis.position[2] - state.terrain.height],  # pelvis height
-            new_orient,  # pelvis orientation
-            state.motor.position[:],  # actuated joint positions
+        if args.reduced_input:
+            robot_state = np.concatenate([
 
-            new_translationalVelocity,  # pelvis translational velocity
-            state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-            state.motor.velocity[:],  # actuated joint velocities
+                # Pelvis States
+                new_orient,
+                state.pelvis.rotationalVelocity[:],
 
-            state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
+                # Motor States
+                state.motor.position[:],
+                state.motor.velocity[:],
 
-            state.joint.position[:],  # unactuated joint positions
-            state.joint.velocity[:]  # unactuated joint velocities
-        ])
+                # Foot States
+                # state.leftFoot.position[:],
+                # state.rightFoot.position[:],
+
+            ])
+        else:
+
+            # Use state estimator
+            robot_state = np.concatenate([
+                [state.pelvis.position[2] - state.terrain.height],  # pelvis height
+                new_orient,  # pelvis orientation
+                state.motor.position[:],  # actuated joint positions
+
+                new_translationalVelocity,  # pelvis translational velocity
+                state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
+                state.motor.velocity[:],  # actuated joint velocities
+
+                state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
+
+                state.joint.position[:],  # unactuated joint positions
+                state.joint.velocity[:]  # unactuated joint velocities
+            ])
 
         # Concatenate robot_state to ext_state
         RL_state = np.concatenate((robot_state, ext_state))
