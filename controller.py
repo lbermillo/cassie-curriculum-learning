@@ -11,7 +11,7 @@ import numpy as np
 from rl.networks.Actor import Actor
 
 from cassie.envs import cassie_standing
-from cassie.quaternion_function import *
+from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
