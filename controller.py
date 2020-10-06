@@ -33,7 +33,9 @@ args = parser.parse_args()
 torch.set_num_threads(1)
 
 # Prepare model
-env = cassie_standing.CassieEnv()
+env = cassie_standing.CassieEnv(simrate=args.simrate,
+                                reduced_input=args.reduced_input,
+                                clock_based=args.clock)
 
 state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
@@ -156,8 +158,6 @@ while True:
 
         # Concatenate clock with ext_state
         ext_state = np.concatenate(([0., 0.], [speed])) if args.clock else [speed]
-
-        print(args.clock, ext_state)
 
         # Update orientation
         new_orient = state.pelvis.orientation[:]
