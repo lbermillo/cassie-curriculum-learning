@@ -33,8 +33,10 @@ if __name__ == '__main__':
     parser.add_argument('--fall_threshold', type=float, default=0.2,
                         help='Height in meters that the environment considers falling when it goes below the difference'
                              'between the target height and fall threshold (default: 0.7)')
-    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
-                        help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--min_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='min speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='max speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
@@ -91,8 +93,8 @@ if __name__ == '__main__':
                         help='Discount factor (default=0.99)')
     parser.add_argument('--start_steps', type=int, default=10000,
                         help='Steps sampling random actions (default: 10000)')
-    parser.add_argument('--network_init', action='store_true', default=False,
-                        help='Enables network initialization')
+    parser.add_argument('--no_network_init', action='store_false', default=True,
+                        help='Disables network initialization')
 
     # TD3 Specific Parameters
     parser.add_argument('--update_fq', type=int, default=2, dest='update_fq',
@@ -122,7 +124,7 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}SPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
@@ -135,7 +137,7 @@ if __name__ == '__main__':
         args.eps_steps,
         args.seed,
         args.reset_ratio,
-        args.speed,
+        [args.min_speed[0], args.max_speed[0]],
         args.power_threshold,
         args.fall_threshold,
         args.clock,
@@ -156,8 +158,8 @@ if __name__ == '__main__':
                             fall_threshold=args.fall_threshold,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            min_speed=args.speed[0],
-                            max_speed=args.speed[1],
+                            min_speed=args.min_speed,
+                            max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             debug=args.debug,

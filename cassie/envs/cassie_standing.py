@@ -16,8 +16,9 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_threshold=0.2, min_speed=0, max_speed=1, power_threshold=150,
-                 reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
+                 min_height=0.6, max_height=3.0, fall_threshold=0.3, min_speed=(0, 0, 0), max_speed=(1, 1, 1),
+                 power_threshold=150, reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml",
+                 traj='walking', writer=None):
 
         # Using CassieSim
         self.config = config
@@ -64,7 +65,7 @@ class CassieEnv:
         self.r_foot_pos = np.zeros(3)
 
         self.timestep = 0
-        self.full_reset = False
+        self.total_steps = 0
 
         # Initial Actions
         self.P = np.array([100, 100, 88, 96, 50])
@@ -196,6 +197,7 @@ class CassieEnv:
 
         # Update timestep counter
         self.timestep += 1
+        self.total_steps += 1
 
         return state, reward, done, {}
 
@@ -206,8 +208,8 @@ class CassieEnv:
         # phase reset ratio = 1 means use phase reset of the time while 0 means don't use phase reset
         if np.random.rand() < phase_reset_ratio:
             phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-            speed = speed if speed is not None else random.randint(int(self.min_speed * 10),
-                                                                   int(self.max_speed * 10)) / 10.
+            speed = speed if speed is not None else random.randint(int(self.min_speed[0] * 10),
+                                                                   int(self.max_speed[0] * 10)) / 10.
 
             # get the corresponding state from the reference trajectory for the current phase
             qpos, qvel = self.get_ref_state(phase, speed)
@@ -215,15 +217,17 @@ class CassieEnv:
             self.sim.set_qpos(qpos)
             self.sim.set_qvel(qvel)
 
-            # Tracking variable for Foot Alignment reward
-            self.full_reset = False
-
         else:
             self.sim.full_reset()
             self.reset_cassie_state()
 
-            # Tracking variable for Foot Alignment reward
-            self.full_reset = True
+            x_speed = random.randint(int(self.min_speed[0] * 10), int(self.max_speed[0] * 10)) / 10.
+            y_speed = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
+            z_speed = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
+
+            qvel = np.copy(self.sim.qvel())
+            qvel[:3] = [x_speed, y_speed, z_speed]
+            self.sim.set_qvel(qvel)
 
         # Torque tracking variable for Torque cost
         _, power_info = estimate_power(self.cassie_state.motor.torque[:10], self.cassie_state.motor.velocity[:10])
@@ -327,12 +331,12 @@ class CassieEnv:
 
         if self.writer is not None and self.debug:
             # log episode reward to tensorboard
-            self.writer.add_scalar('env_reward/pose', r_pose)
-            self.writer.add_scalar('env_reward/com_pos', r_com_pos)
-            self.writer.add_scalar('env_reward/com_vel', r_com_vel)
-            self.writer.add_scalar('env_reward/foot_placement', r_foot_placement)
-            self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient)
-            self.writer.add_scalar('env_reward/grf', r_grf)
+            self.writer.add_scalar('env_reward/pose', r_pose, self.total_steps)
+            self.writer.add_scalar('env_reward/com_pos', r_com_pos, self.total_steps)
+            self.writer.add_scalar('env_reward/com_vel', r_com_vel, self.total_steps)
+            self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
+            self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
+            self.writer.add_scalar('env_reward/grf', r_grf, self.total_steps)
         elif self.debug:
             print('Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(r_pose,
                                                                                                              r_com_pos,
@@ -343,7 +347,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0.1, 0.4, 0., 0., 0.1)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0., 0.4, 0., 0., 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -372,12 +376,12 @@ class CassieEnv:
 
         if self.writer is not None and self.debug:
             # log episode reward to tensorboard
-            self.writer.add_scalar('env_cost/foot_contact', c_contact)
-            self.writer.add_scalar('env_cost/power_consumption', c_power)
-            self.writer.add_scalar('env_cost/fall', c_fall)
-            self.writer.add_scalar('env_cost/foot_drag', c_drag)
-            self.writer.add_scalar('env_cost/torque', c_torque)
-            self.writer.add_scalar('env_cost/toe_usage', c_toe)
+            self.writer.add_scalar('env_cost/foot_contact', c_contact, self.total_steps)
+            self.writer.add_scalar('env_cost/power_consumption', c_power, self.total_steps)
+            self.writer.add_scalar('env_cost/fall', c_fall, self.total_steps)
+            self.writer.add_scalar('env_cost/foot_drag', c_drag, self.total_steps)
+            self.writer.add_scalar('env_cost/torque', c_torque, self.total_steps)
+            self.writer.add_scalar('env_cost/toe_usage', c_toe, self.total_steps)
         elif self.debug:
             print('Costs:\t Contact [{:.3f}], Power [{:.3f}], Fall [{:.3f}], Drag [{:.3f}], '
                   'Torque [{:.3f}], Toe [{:.3f}],]\n'.format(c_contact, c_power, c_fall, c_drag, c_torque, c_toe))

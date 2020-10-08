@@ -29,8 +29,10 @@ if __name__ == "__main__":
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
     parser.add_argument('--force_fq', type=int, default=10,
                         help='Frequency forces applied to the pelvis (default: 10 timesteps)')
-    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
-                        help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--min_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='min speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='max speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
@@ -73,8 +75,8 @@ if __name__ == "__main__":
                             target_action_weight=args.tw,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            min_speed=args.speed[0],
-                            max_speed=args.speed[1],
+                            min_speed=args.min_speed,
+                            max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             config=args.config,

@@ -13,7 +13,7 @@ class Agent:
     def __init__(self, algorithm, state_dim, action_dim, max_action, hidden_dim=(256, 256), actor_lr=3e-4, critic_lr=3e-4,
                  discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4,
                  capacity=1e6, batch_size=100, policy_update_freq=2, termination_curriculum=None, chkpt_pth=None,
-                 init_weights=False, writer=None):
+                 init_weights=True, writer=None):
 
         self.action_dim = action_dim
         self.max_action = float(max_action)
