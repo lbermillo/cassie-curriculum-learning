@@ -59,7 +59,9 @@ if __name__ == '__main__':
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
     parser.add_argument('--reset_ratio', type=float, default=0,
-                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
+                        help='Ratio for frequency of applying perturbations (default=0)')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Enables phase resets')
     parser.add_argument('--adaptive_discount', action='store_true', default=False,
                         help='Activates adaptive discount factor starting from 0.005 to 0.99. '
                              'If true, discount factor will be overridden (default=False)')
@@ -200,6 +202,7 @@ if __name__ == '__main__':
                                             envs[args.env][0],
                                             agent_id) if args.save else None,
                 reset_ratio=args.reset_ratio,
+                use_phase=args.use_phase,
                 adaptive_discount=args.adaptive_discount)
 
     if writer:

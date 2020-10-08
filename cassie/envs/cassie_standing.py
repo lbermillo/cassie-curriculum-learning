@@ -15,10 +15,10 @@ from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, forces=(0, 0, 0), force_fq=100,
-                 min_height=0.6, max_height=3.0, fall_threshold=0.3, min_speed=(0, 0, 0), max_speed=(1, 1, 1),
-                 power_threshold=150, reduced_input=False, debug=False, config="cassie/cassiemujoco/cassie.xml",
-                 traj='walking', writer=None):
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, target_speed=(0, 0, 0),
+                 forces=(0, 0, 0), force_fq=100, min_height=0.6, max_height=3.0, fall_threshold=0.3,
+                 min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, debug=False,
+                 config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
         # Using CassieSim
         self.config = config
@@ -37,6 +37,7 @@ class CassieEnv:
         self.min_speed = min_speed
         self.max_speed = max_speed
         self.target_height = target_height
+        self.target_speed = target_speed
         self.power_threshold = power_threshold
         self.reduced_input = reduced_input
         self.debug = debug
@@ -75,7 +76,6 @@ class CassieEnv:
 
         self.cassie_state = state_out_t()
         self.simrate = simrate
-        self.speed = 0
 
         dirname = os.path.dirname(__file__)
         if traj == "walking":
@@ -201,32 +201,32 @@ class CassieEnv:
 
         return state, reward, done, {}
 
-    def reset(self, phase=None, speed=None, phase_reset_ratio=0.7):
+    def reset(self, reset_ratio=0, use_phase=False):
         # reset variables
         self.timestep = 0
+        self.sim.full_reset()
+        self.reset_cassie_state()
 
-        # phase reset ratio = 1 means use phase reset of the time while 0 means don't use phase reset
-        if np.random.rand() < phase_reset_ratio:
-            phase = int(phase) if phase is not None else random.randint(0, self.phaselen)
-            speed = speed if speed is not None else random.randint(int(self.min_speed[0] * 10),
-                                                                   int(self.max_speed[0] * 10)) / 10.
+        # reset with perturbations and/or from a different stance (use_phase=True)
+        if np.random.rand() < reset_ratio:
 
-            # get the corresponding state from the reference trajectory for the current phase
-            qpos, qvel = self.get_ref_state(phase, speed)
-
-            self.sim.set_qpos(qpos)
-            self.sim.set_qvel(qvel)
-
-        else:
-            self.sim.full_reset()
-            self.reset_cassie_state()
-
+            # initialize qvel and get desired xyz velocities
+            qvel = np.copy(self.sim.qvel())
             x_speed = random.randint(int(self.min_speed[0] * 10), int(self.max_speed[0] * 10)) / 10.
             y_speed = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
             z_speed = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
 
-            qvel = np.copy(self.sim.qvel())
+            if use_phase:
+                # get the corresponding state from the reference trajectory for the current phase
+                qpos, qvel = self.get_ref_state(random.randint(0, self.phaselen), x_speed)
+
+                # set joint positions
+                self.sim.set_qpos(qpos)
+
+            # modify qvel to have desired xyz joint velocities
             qvel[:3] = [x_speed, y_speed, z_speed]
+
+            # set joint velocities
             self.sim.set_qvel(qvel)
 
         # Torque tracking variable for Torque cost
@@ -286,7 +286,8 @@ class CassieEnv:
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
-        r_com_vel = np.exp(-multiplier * np.linalg.norm(qvel[:3]) ** 2)
+        com_target_speed = np.array(self.target_speed)
+        r_com_vel = np.exp(-multiplier * np.linalg.norm(qvel[:3] - com_target_speed) ** 2)
 
         # 4. Foot Placement
         # 4a. Foot Alignment
@@ -388,9 +389,7 @@ class CassieEnv:
 
         return cost
 
-    def get_ref_state(self, phase, speed=None):
-        speed = self.speed if speed is None else speed
-
+    def get_ref_state(self, phase, speed):
         if phase > self.phaselen:
             phase = 0
 
@@ -419,7 +418,7 @@ class CassieEnv:
 
     def get_full_state(self):
 
-        ext_state = [self.speed]
+        ext_state = [self.target_speed[0]]
 
         if self.clock_based:
             # Clock is muted for standing

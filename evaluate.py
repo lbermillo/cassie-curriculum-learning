@@ -53,7 +53,9 @@ if __name__ == "__main__":
     parser.add_argument('--print_stats', action='store_false', default=True,
                         help='Prints episode rewards (default: True)')
     parser.add_argument('--reset_ratio', type=float, default=0,
-                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
+                        help='Ratio for frequency of applying perturbations (default=0)')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Enables phase resets')
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
@@ -98,4 +100,5 @@ if __name__ == "__main__":
                    max_steps=args.eval_steps,
                    render=args.render,
                    print_stats=args.print_stats,
-                   reset_ratio=args.reset_ratio, )
+                   reset_ratio=args.reset_ratio,
+                   use_phase=args.use_phase, )
