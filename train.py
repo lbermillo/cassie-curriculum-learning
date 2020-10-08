@@ -58,8 +58,8 @@ if __name__ == '__main__':
                         help='Creates a seed to the specified value (default: None)')
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
-    parser.add_argument('--reset_ratio', type=float, default=0.7,
-                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0.7)')
+    parser.add_argument('--reset_ratio', type=float, default=0,
+                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
     parser.add_argument('--adaptive_discount', action='store_true', default=False,
                         help='Activates adaptive discount factor starting from 0.005 to 0.99. '
                              'If true, discount factor will be overridden (default=False)')
@@ -93,7 +93,7 @@ if __name__ == '__main__':
                         help='Discount factor (default=0.99)')
     parser.add_argument('--start_steps', type=int, default=10000,
                         help='Steps sampling random actions (default: 10000)')
-    parser.add_argument('--no_network_init', action='store_false', default=True,
+    parser.add_argument('--no_network_init', action='store_false', default=True, dest='network_init',
                         help='Disables network initialization')
 
     # TD3 Specific Parameters

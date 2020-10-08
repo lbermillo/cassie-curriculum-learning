@@ -4,8 +4,8 @@ import torch.nn as nn
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        nn.init.xavier_uniform_(m.weight, gain=1)
+        nn.init.constant_(m.bias, 0)
 
 
 class Critic(nn.Module):
