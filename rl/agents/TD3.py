@@ -172,8 +172,8 @@ class Agent:
         episode = 0
         best_score = 0.0
         if adaptive_discount:
-            self.model.discount = 0.2
-            discount_rate = (0.99 - self.model.discount) / (0.5 * training_steps)
+            self.model.discount = 0.25
+            discount_rate = (0.99 - self.model.discount) / (0.75 * (training_steps - self.batch_size))
 
         while self.total_steps < training_steps:
             # collect experiences
@@ -211,7 +211,10 @@ class Agent:
 
             if adaptive_discount and self.total_steps > self.batch_size:
                 # update discount factor for the next episode
-                self.model.discount += discount_rate
+                self.model.discount = 0.25 + (0.99 * self.total_steps) / (training_steps - self.batch_size) \
+                    if self.model.discount < 0.99 else 0.99
+
+                print(self.total_steps, self.model.discount)
 
 
 

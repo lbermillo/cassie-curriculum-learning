@@ -283,7 +283,8 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
+        # r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
+        r_com_pos = xy_com_pos
 
         # 3. CoM Velocity Modulation
         com_target_speed = np.array(self.target_speed)
@@ -348,7 +349,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0., 0.4, 0., 0., 0.1)):
+    def compute_cost(self, qpos, foot_grf, cw=(0.3, 0., 0.4, 0.1, 0., 0.1)):
         # 1. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
@@ -438,6 +439,10 @@ class CassieEnv:
                 # Motor States
                 self.cassie_state.motor.position[:],
                 self.cassie_state.motor.velocity[:],
+
+                # Foot States
+                # self.cassie_state.leftFoot.position[:],
+                # self.cassie_state.rightFoot.position[:],
 
             ])
 

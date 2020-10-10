@@ -79,12 +79,12 @@ if __name__ == '__main__':
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
                         help='Name of algorithm to use [TD3, SAC] (default: TD3)')
-    parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
     parser.add_argument('--alr', type=float, default=5e-5,
-                        help='Actor learning rate(s) (default=5e-5)')
+                        help='Actor learning rate (default=5e-5)')
     parser.add_argument('--clr', type=float, default=8e-5,
-                        help='Critic learning rate(s) (default=[8e-5])')
+                        help='Critic learning rate (default=8e-5)')
     parser.add_argument('--buffer', type=float, default=1e6,
                         help='Replay buffer size (default=1e6)')
     parser.add_argument('--batch', type=int, default=1024,
