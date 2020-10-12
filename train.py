@@ -30,9 +30,9 @@ if __name__ == '__main__':
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
     parser.add_argument('--force_fq', type=int, default=100,
                         help='Timestep frequency of forces applied to the pelvis (default: 100)')
-    parser.add_argument('--fall_threshold', type=float, default=0.2,
+    parser.add_argument('--fall_threshold', type=float, default=0.3,
                         help='Height in meters that the environment considers falling when it goes below the difference'
-                             'between the target height and fall threshold (default: 0.7)')
+                             'between the target height and fall threshold (default: 0.3)')
     parser.add_argument('--min_speed', nargs='+', type=float, default=(0, 0, 0),
                         help='min speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),

@@ -5,9 +5,9 @@ import numpy as np
 
 from math import floor
 from copy import deepcopy
+from cassie.utils.quaternion_function import *
 from cassie.trajectory import CassieTrajectory
 from cassie.utils.power_estimation import estimate_power
-from cassie.utils.quaternion_function import quaternion2euler
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
@@ -16,7 +16,7 @@ class CassieEnv:
 
     def __init__(self, simrate=60, clock_based=True, state_est=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, target_speed=(0, 0, 0),
-                 forces=(0, 0, 0), force_fq=100, min_height=0.6, max_height=3.0, fall_threshold=0.3,
+                 forces=(0, 0, 0), force_fq=100, min_height=0.2, max_height=3.0, fall_threshold=0.3,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, debug=False,
                  config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
@@ -147,6 +147,10 @@ class CassieEnv:
                                   0,
                                   0])
 
+        # random changes to orientation
+        # if np.random.randint(300) == 0:
+        #     self.orient_add += np.random.uniform(-self.max_orient_change, self.max_orient_change)
+
         # reset mujoco tracking variables
         foot_pos = np.zeros(6)
         self.l_foot_frc = np.zeros(3)
@@ -216,7 +220,7 @@ class CassieEnv:
             y_speed = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
             z_speed = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
 
-            if use_phase:
+            if use_phase and np.random.rand() < reset_ratio:
                 # get the corresponding state from the reference trajectory for the current phase
                 qpos, qvel = self.get_ref_state(random.randint(0, self.phaselen), x_speed)
 
@@ -283,8 +287,7 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        # r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
-        r_com_pos = xy_com_pos
+        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
         com_target_speed = np.array(self.target_speed)
@@ -417,6 +420,19 @@ class CassieEnv:
 
         return pos, vel
 
+    def rotate_to_orient(self, vec):
+        quaternion = euler2quat(z=self.orient_add, y=0, x=0)
+        iquaternion = inverse_quaternion(quaternion)
+
+        if len(vec) == 3:
+            return rotate_by_quaternion(vec, iquaternion)
+
+        elif len(vec) == 4:
+            new_orient = quaternion_product(iquaternion, vec)
+            if new_orient[0] < 0:
+                new_orient = -new_orient
+            return new_orient
+
     def get_full_state(self):
 
         ext_state = [self.target_speed[0]]
@@ -429,6 +445,8 @@ class CassieEnv:
             ext_state = np.concatenate((clock, ext_state))
 
         if self.state_est:
+            # pelvis_orientation = self.rotate_to_orient(self.cassie_state.pelvis.orientation[:])
+
             # Use state estimator
             robot_state = np.concatenate([
 
@@ -441,8 +459,8 @@ class CassieEnv:
                 self.cassie_state.motor.velocity[:],
 
                 # Foot States
-                # self.cassie_state.leftFoot.position[:],
-                # self.cassie_state.rightFoot.position[:],
+                self.cassie_state.leftFoot.position[:],
+                self.cassie_state.rightFoot.position[:],
 
             ])
 

@@ -91,12 +91,20 @@ class Agent:
                                                                                 done)
 
             # update critic by minimizing the loss
-            self.model.update_critic(current_Q1, current_Q2, target_Q)
+            critic_loss = self.model.update_critic(current_Q1, current_Q2, target_Q)
+
+            if self.writer:
+                # log episode reward to tensorboard
+                self.writer.add_scalar('loss/critic', critic_loss, self.total_steps)
 
             # delay updates for actor and target networks
             if step % self.policy_update_freq == 0:
                 # update actor policy using the sampled policy gradient
-                self.model.update_actor(state)
+                actor_loss = self.model.update_actor(state)
+
+                if self.writer:
+                    # log episode reward to tensorboard
+                    self.writer.add_scalar('loss/actor', actor_loss, self.total_steps)
 
                 # update target networks
                 self.model.update_target_networks()
