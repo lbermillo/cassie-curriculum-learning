@@ -253,7 +253,7 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, grf_tolerance=25,
-                       rw=(0.2, 0.2, 0.2, 0.2, 0.2), multiplier=500):
+                       rw=(0.2, 0.15, 0.25, 0.2, 0.2), multiplier=500):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -376,8 +376,8 @@ class CassieEnv:
         c_torque = 1 - np.exp(-np.linalg.norm(power_info['input_torques'] - self.previous_torque) ** 2)
 
         # 6. Toe Cost
-        c_toe = 1 - np.exp(-2.5e-5 * np.linalg.norm([self.cassie_state.motor.torque[4],
-                                                     self.cassie_state.motor.torque[9]]) ** 4)
+        c_toe = 1 - np.exp(-1e-5 * np.linalg.norm([self.cassie_state.motor.torque[4],
+                                                   self.cassie_state.motor.torque[9]]) ** 4)
 
         # Update previous torque with current one
         self.previous_torque = power_info['input_torques']

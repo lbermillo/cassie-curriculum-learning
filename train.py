@@ -126,7 +126,7 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{:1e}CLR{:1e}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}TW{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.tw,
