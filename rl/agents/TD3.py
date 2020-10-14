@@ -31,7 +31,7 @@ class Agent:
             self.model.load(chkpt_pth, device)
 
             # DEBUG check if it stays relatively the same policy w/out random actions
-            self.random_action_steps = 0
+            # self.random_action_steps = 0
 
         # intialize replay buffer and batch size
         self.replay_buffer = ReplayMemory(capacity)
@@ -195,7 +195,7 @@ class Agent:
             self.update(episode_steps)
 
             # evaluate current policy
-            if episode % evaluate_interval == 0:
+            if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
                 score = self.evaluate(env, render=False)
 
                 # update reward termination
@@ -217,7 +217,7 @@ class Agent:
 
             episode += 1
 
-            if adaptive_discount and self.total_steps > self.batch_size:
+            if adaptive_discount and self.total_steps > self.random_action_steps:
                 # update discount factor for the next episode
                 self.model.discount = 0.25 + (0.99 * self.total_steps) / (training_steps - self.batch_size) \
                     if self.model.discount < 0.99 else 0.99
