@@ -3,6 +3,7 @@
 import sys
 import time
 import torch
+import atexit
 import pickle
 import argparse
 import platform
@@ -15,7 +16,20 @@ from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
+
+def log(filename, times, inputs, outputs, targets, torques, sto="final"):
+    data = {"time": times, "input": inputs, "output": outputs, "target": targets, "torques": torques}
+
+    filep = open(filename + "_log" + str(sto) + ".pkl", "wb")
+
+    pickle.dump(data, filep)
+
+    filep.close()
+
+
 parser = argparse.ArgumentParser(description='Cassie Sim Controller')
+parser.add_argument('--filename', '-f', action='store', default=None, required=True,
+                    help='Provide filename for logs (default=None)')
 parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
                     help='Provide path to existing model to load it (default=None)')
 parser.add_argument('--simrate', type=int, default=60,
@@ -41,12 +55,22 @@ state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
-# TODO: create args from terminal for policy parameters
+# load policy
 checkpoint = torch.load(args.load)
 
 policy = Actor(state_dim, action_dim, max_action, args.hidden)
 policy.load_state_dict(checkpoint['actor'])
 policy.eval()
+
+# Initialize logging variables
+time_log   = [] # time stamp
+input_log  = [] # network inputs
+output_log = [] # network outputs
+target_log = [] #PD target log
+torque_log = []
+
+# run log function when closing the application
+atexit.register(log, args.filename, time_log, input_log, output_log, target_log, torque_log)
 
 # Initialize control structure with gains
 P = np.array([100, 100, 88, 96, 50, 100, 100, 88, 96, 50])
@@ -68,7 +92,6 @@ if platform.node() == 'cassie':
                        local_addr='10.10.10.100', local_port='25011')
 else:
     cassie = CassieUdp() # local testing
-
 
 # Connect to the simulator or robot
 print('Connecting...')
@@ -120,6 +143,18 @@ while True:
         # Reset orientation on STO
         if state.radio.channel[8] < 0:
             orient_add = quaternion2euler(state.pelvis.orientation[:])[2]
+
+            # Save log files after STO toggle (skipping first STO)
+            if sto is False:
+                log(args.filename, time_log, input_log, output_log, target_log, torque_log, sto=str(sto_count))
+                sto_count += 1
+                sto = True
+                # Clear out logs
+                time_log = []  # time stamp
+                input_log = []  # network inputs
+                output_log = []  # network outputs
+                target_log = []  # PD target log
+                torque_log = []  # cassie state
         else:
             sto = False
 
@@ -186,8 +221,8 @@ while True:
                 state.motor.velocity[:],
 
                 # Foot States
-                # state.leftFoot.position[:],
-                # state.rightFoot.position[:],
+                state.leftFoot.position[:],
+                state.rightFoot.position[:],
 
             ])
         else:
@@ -224,6 +259,14 @@ while True:
             u.rightLeg.motorPd.pTarget[i] = target[i + 5]
 
         cassie.send_pd(u)
+
+        # Logging
+        if not sto:
+            time_log.append(time.time())
+            input_log.append(RL_state)
+            output_log.append(action)
+            target_log.append(target)
+            torque_log.append(state.motor.torque[:])
 
         # Measure delay
         print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))

@@ -213,8 +213,8 @@ try:
                 state.motor.velocity[:],
 
                 # Foot States
-                # state.leftFoot.position[:],
-                # state.rightFoot.position[:],
+                state.leftFoot.position[:],
+                state.rightFoot.position[:],
 
             ])
         else:
