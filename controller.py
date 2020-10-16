@@ -17,8 +17,8 @@ from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
 
-def log(filename, times, inputs, outputs, targets, torques, sto="final"):
-    data = {"time": times, "input": inputs, "output": outputs, "target": targets, "torques": torques}
+def log(filename, times, states, inputs, outputs, targets, sto="final"):
+    data = {"time": times, "state": states, "input": inputs, "output": outputs, "target": targets}
 
     filep = open(filename + "_log" + str(sto) + ".pkl", "wb")
 
@@ -64,13 +64,13 @@ policy.eval()
 
 # Initialize logging variables
 time_log   = [] # time stamp
+state_log  = [] # cassie_state
 input_log  = [] # network inputs
 output_log = [] # network outputs
 target_log = [] #PD target log
-torque_log = []
 
 # run log function when closing the application
-atexit.register(log, args.filename, time_log, input_log, output_log, target_log, torque_log)
+atexit.register(log, args.filename, time_log, state_log, input_log, output_log, target_log)
 
 # Initialize control structure with gains
 P = np.array([100, 100, 88, 96, 50, 100, 100, 88, 96, 50])
@@ -146,15 +146,15 @@ while True:
 
             # Save log files after STO toggle (skipping first STO)
             if sto is False:
-                log(args.filename, time_log, input_log, output_log, target_log, torque_log, sto=str(sto_count))
+                log(args.filename, time_log, state_log, input_log, output_log, target_log, sto=str(sto_count))
                 sto_count += 1
                 sto = True
                 # Clear out logs
                 time_log = []  # time stamp
+                state_log = []
                 input_log = []  # network inputs
                 output_log = []  # network outputs
                 target_log = []  # PD target log
-                torque_log = []  # cassie state
         else:
             sto = False
 
@@ -263,10 +263,10 @@ while True:
         # Logging
         if not sto:
             time_log.append(time.time())
+            state_log.append(state)
             input_log.append(RL_state)
             output_log.append(action)
             target_log.append(target)
-            torque_log.append(state.motor.torque[:])
 
         # Measure delay
         print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))
