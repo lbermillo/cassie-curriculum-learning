@@ -31,7 +31,7 @@ class Agent:
             self.model.load(chkpt_pth, device)
 
             # DEBUG check if it stays relatively the same policy w/out random actions
-            # self.random_action_steps = 0
+            self.random_action_steps = 0
 
         # intialize replay buffer and batch size
         self.replay_buffer = ReplayMemory(capacity)
