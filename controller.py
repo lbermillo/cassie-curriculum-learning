@@ -43,9 +43,6 @@ parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
 
 args = parser.parse_args()
 
-# Prevent latency issues by disabling multithreading in pytorch
-torch.set_num_threads(1)
-
 # Prepare model
 env = cassie_standing.CassieEnv(simrate=args.simrate,
                                 reduced_input=args.reduced_input,
