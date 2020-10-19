@@ -373,7 +373,7 @@ class CassieEnv:
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
         # 4. Action Change Cost
-        actions_coeff = np.min([self.total_steps * (1e3 / 2e6), 1e-3])
+        actions_coeff = np.min([self.total_steps * (1e3 / 2e6), 1e3])
         c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action - self.previous_action) ** 2)
 
         # 5. Toe Cost
