@@ -256,8 +256,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf,
-                       rw=(0.17, 0.17, 0.17, 0.16, 0.16, 0.17), multiplier=500):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0.2, 0.1, 0.1, 0.2, 0.2)):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -274,14 +273,16 @@ class CassieEnv:
         r_pose = np.exp(-1e5 * pose_error ** 2)
 
         # 2. CoM Position Modulation
+        com_position_coeff = 25
+
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
 
-        xy_com_pos = np.exp(-np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
+        xy_com_pos = np.exp(-com_position_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_com_pos = np.exp(-50 * (qpos[2] - self.target_height) ** 2)
+        z_com_pos = np.exp(-com_position_coeff * (qpos[2] - self.target_height) ** 2)
 
         r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
@@ -297,30 +298,24 @@ class CassieEnv:
         r_com_vel = np.exp(-np.linalg.norm(qvel[:3] - np.zeros(3)) ** 2)
 
         # 4. Foot Placement
+        foot_placement_coeff = 50
+
         # 4a. Foot Alignment
-        r_feet_align = np.exp(-multiplier * (foot_pos[0] - foot_pos[3]) ** 2)
+        r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        width_thresh = 0.02  # m = 2 cm
-        target_width = 0.18  # m = 18 cm seems to be optimal
+        target_width = 0.18  # 18 cm seems to be optimal
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
-        #
-        # if feet_width < target_width - width_thresh:
-        #     r_foot_width = np.exp(-multiplier * (feet_width - (target_width - width_thresh)) ** 2)
-        # elif feet_width > target_width + width_thresh:
-        #     r_foot_width = np.exp(-multiplier * (feet_width - (target_width + width_thresh)) ** 2)
-        # else:
-        #     r_foot_width = 1.
-
-        r_foot_width = np.exp(-(feet_width - target_width) ** 2)
+        r_foot_width = np.exp(-foot_placement_coeff * (feet_width - target_width) ** 2)
 
         r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
+        fp_orientation_coeff = 5e3
         _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
         foot_yaw = np.array([qpos[8], qpos[22]])
-        left_foot_orient  = np.exp(-multiplier * (foot_yaw[0] - pelvis_yaw) ** 2)
-        right_foot_orient = np.exp(-multiplier * (foot_yaw[1] - pelvis_yaw) ** 2)
+        left_foot_orient  = np.exp(-fp_orientation_coeff * (foot_yaw[0] - pelvis_yaw) ** 2)
+        right_foot_orient = np.exp(-fp_orientation_coeff * (foot_yaw[1] - pelvis_yaw) ** 2)
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
@@ -336,8 +331,8 @@ class CassieEnv:
         reward = (rw[0] * r_pose
                   + rw[1] * r_com_pos
                   + rw[2] * r_com_vel
-                  + rw[3] * r_fp_orient
-                  + rw[4] * r_foot_placement
+                  + rw[3] * r_foot_placement
+                  + rw[4] * r_fp_orient
                   + rw[5] * r_grf)
 
         if self.writer is not None and self.debug:
@@ -359,7 +354,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.3, 0.2, 0.1, 0.1, 0., 0.)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.3, 0.2, 0.1, 0.1, 0.1, 0.)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -369,15 +364,18 @@ class CassieEnv:
         # 3. Power Consumption
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10], self.cassie_state.motor.velocity[:10])
 
+        # power_coeff = 1e-5
         power_coeff = np.min([self.total_steps * (1e-5 / 1e6), 1e-5])
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
         # 4. Action Change Cost
-        actions_coeff = np.min([self.total_steps * (1e3 / 2e6), 1e3])
+        # actions_coeff = 1e3
+        actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
         c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action - self.previous_action) ** 2)
 
         # 5. Toe Cost
-        toe_coeff = np.min([self.total_steps * (3e-6 / 3e6), 3e-6])
+        # toe_coeff = 3e-6
+        toe_coeff = np.min([self.total_steps * (3e-6 / 5e6), 3e-6])
         c_toe = 1 - np.exp(-toe_coeff * np.linalg.norm([self.cassie_state.motor.torque[4],
                                                         self.cassie_state.motor.torque[9]]) ** 4)
 
@@ -407,7 +405,7 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/toe_usage', c_toe, self.total_steps)
         elif self.debug:
             print('Costs:\t Fall [{:.3f}], Contact [{:.3f}], Power [{:.3f}], Action Change [{:.3f}], '
-                  'Toe [{:.3f}],]\n'.format(c_fall, c_contact, c_power, c_actions, c_toe))
+                  'Toe [{:.3f}], Drag [{:.3f}]\n'.format(c_fall, c_contact, c_power, c_actions, c_toe, c_drag))
 
         return cost
 
