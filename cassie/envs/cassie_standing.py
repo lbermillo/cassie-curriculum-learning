@@ -298,7 +298,7 @@ class CassieEnv:
         r_com_vel = np.exp(-np.linalg.norm(qvel[:3] - np.zeros(3)) ** 2)
 
         # 4. Foot Placement
-        foot_placement_coeff = 50
+        foot_placement_coeff = 250
 
         # 4a. Foot Alignment
         r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
