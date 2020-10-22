@@ -165,8 +165,29 @@ class CassieEnv:
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
 
-        for _ in range(simrate):
-            self.step_simulation(action)
+        # initialize delayed action with current action outputs
+        delayed_action = deepcopy(action)
+
+        # replace hip motors with previous action outputs
+        # hip roll motors
+        delayed_action[0] = self.previous_action[0]
+        delayed_action[5] = self.previous_action[5]
+
+        # hip yaw motors
+        delayed_action[1] = self.previous_action[1]
+        delayed_action[6] = self.previous_action[6]
+
+        # hip pitch motors
+        delayed_action[2] = self.previous_action[2]
+        delayed_action[7] = self.previous_action[7]
+
+        for rate in range(simrate):
+
+            # simulate delay in hip motors
+            if rate < simrate * 0.75:
+                self.step_simulation(delayed_action)
+            else:
+                self.step_simulation(action)
 
             # Foot Force Tracking
             foot_forces = self.sim.get_foot_forces()
@@ -256,7 +277,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0.2, 0.1, 0.1, 0.2, 0.2)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0.15, 0.15, 0.1, 0.2, 0.2)):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -273,7 +294,7 @@ class CassieEnv:
         r_pose = np.exp(-1e5 * pose_error ** 2)
 
         # 2. CoM Position Modulation
-        com_position_coeff = 25
+        com_position_coeff = 10
 
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
@@ -284,7 +305,7 @@ class CassieEnv:
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
         z_com_pos = np.exp(-com_position_coeff * (qpos[2] - self.target_height) ** 2)
 
-        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
+        r_com_pos = 0.75 * xy_com_pos + 0.25 * z_com_pos
 
         # 3. CoM Velocity Modulation
         # Derive horizontal target speed from CP formula and vertical target speed should be 0
@@ -354,7 +375,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.3, 0.2, 0.1, 0.1, 0.1, 0.)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.1, 0., 0.)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -363,19 +384,16 @@ class CassieEnv:
 
         # 3. Power Consumption
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10], self.cassie_state.motor.velocity[:10])
-
-        # power_coeff = 1e-5
-        power_coeff = np.min([self.total_steps * (1e-5 / 1e6), 1e-5])
-        c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
+        c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
 
         # 4. Action Change Cost
-        # actions_coeff = 1e3
-        actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
+        actions_coeff = 10
+        # actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
         c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action - self.previous_action) ** 2)
 
         # 5. Toe Cost
-        # toe_coeff = 3e-6
-        toe_coeff = np.min([self.total_steps * (3e-6 / 5e6), 3e-6])
+        toe_coeff = 3e-6
+        # toe_coeff = np.min([self.total_steps * (3e-6 / 5e6), 3e-6])
         c_toe = 1 - np.exp(-toe_coeff * np.linalg.norm([self.cassie_state.motor.torque[4],
                                                         self.cassie_state.motor.torque[9]]) ** 4)
 
