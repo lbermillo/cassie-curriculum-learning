@@ -18,8 +18,6 @@ if __name__ == '__main__':
                         help='Simulation rate in Hz (default: 50)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock')
-    parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
-                        help='Disables state estimator')
     parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.5], dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold. '
                              'Enter two values [initial, final] cutoff to activate termination curriculum '
@@ -65,6 +63,8 @@ if __name__ == '__main__':
     parser.add_argument('--adaptive_discount', action='store_true', default=False,
                         help='Activates adaptive discount factor starting from 0.005 to 0.99. '
                              'If true, discount factor will be overridden (default=False)')
+    parser.add_argument('--use_mirror_loss', action='store_true', default=False, dest='mirror_loss',
+                        help='Activates mirror loss on actor update. Training will be slow')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -154,7 +154,6 @@ if __name__ == '__main__':
     # initialize environment
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
-                            state_est=args.state_est,
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             fall_threshold=args.fall_threshold,
@@ -184,6 +183,7 @@ if __name__ == '__main__':
                       tau=args.tau,
                       policy_noise=args.policy_noise,
                       random_action_steps=args.start_steps,
+                      use_mirror_loss=args.mirror_loss,
                       capacity=args.buffer,
                       batch_size=args.batch,
                       policy_update_freq=args.update_fq,

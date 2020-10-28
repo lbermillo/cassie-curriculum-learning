@@ -5,16 +5,18 @@ import numpy as np
 
 from math import floor
 from copy import deepcopy
+from cassie.utils.mirror import mirror
 from cassie.utils.quaternion_function import *
 from cassie.trajectory import CassieTrajectory
 from cassie.utils.power_estimation import estimate_power
+from cassie.utils.dynamics_randomization import randomize_mass
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
 # Creating the Standing Environment
 class CassieEnv:
 
-    def __init__(self, simrate=50, clock_based=True, state_est=True,
+    def __init__(self, simrate=50, clock_based=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, target_speed=(0, 0, 0),
                  forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, fall_threshold=0.3,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, debug=False,
@@ -27,7 +29,6 @@ class CassieEnv:
 
         # Initialize parameters
         self.clock_based = clock_based
-        self.state_est = state_est
         self.reward_cutoff = reward_cutoff
         self.forces = forces
         self.force_fq = force_fq
@@ -101,6 +102,8 @@ class CassieEnv:
         # Action tracking to penalize large action changes
         self.previous_action = np.zeros(10)
 
+        # print(len(self.observation_space))
+
     def close(self):
         if self.vis is not None:
             del self.vis
@@ -154,9 +157,9 @@ class CassieEnv:
         # if np.random.randint(300) == 0:
         #     self.orient_add += np.random.uniform(-self.max_orient_change, self.max_orient_change)
 
-        # simulating delays
-        # simrate = self.simrate + np.random.randint(-10, 0)
-        simrate = self.simrate
+        # TODO: simulating delays
+        simrate = self.simrate + np.random.randint(-10, 10)
+        # simrate = self.simrate
 
         # reset mujoco tracking variables
         foot_pos = np.zeros(6)
@@ -178,16 +181,18 @@ class CassieEnv:
         delayed_action[6] = self.previous_action[6]
 
         # hip pitch motors
-        delayed_action[2] = self.previous_action[2]
-        delayed_action[7] = self.previous_action[7]
+        # delayed_action[2] = self.previous_action[2]
+        # delayed_action[7] = self.previous_action[7]
 
         for rate in range(simrate):
 
-            # simulate delay in hip motors
-            if rate < simrate * 0.75:
+            # TODO: simulate delay in hip motors
+            if rate < simrate * np.random.uniform(0., 0.5):
                 self.step_simulation(delayed_action)
             else:
                 self.step_simulation(action)
+                
+            self.step_simulation(action)
 
             # Foot Force Tracking
             foot_forces = self.sim.get_foot_forces()
@@ -240,6 +245,13 @@ class CassieEnv:
         self.reset_cassie_state()
         self.previous_action = np.zeros(10)
 
+        # randomize mass
+        # self.sim.set_body_mass(randomize_mass(self.mass, 0.5, 1.2))
+        # self.weight = np.sum(self.sim.get_body_mass()) * 9.81
+
+        # randomize target height
+        # self.target_height = np.random.randint(6, 11) / 10
+
         # reset with perturbations and/or from a different stance (use_phase=True)
         if np.random.rand() < reset_ratio:
 
@@ -277,7 +289,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.1, 0.1, 0.1, 0.25, 0.2)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(1/6, 1/6, 1/6, 1/6, 1/6, 1/6)):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -291,23 +303,34 @@ class CassieEnv:
         target_pose = np.array([1, 0, 0, 0])
         pose_error = 1 - np.inner(qpos[3:7], target_pose) ** 2
 
-        r_pose = np.exp(-1e5 * pose_error ** 2)
+        r_pose = np.exp(-5e4 * pose_error ** 2)
 
         # 2. CoM Position Modulation
-        com_position_coeff = 10
+        xy_com_pos_coeff = 25
+        z_com_pos_coeff  = 100
 
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
 
-        xy_com_pos = np.exp(-com_position_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
+        xy_com_pos = np.exp(-xy_com_pos_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_com_pos = np.exp(-com_position_coeff * (qpos[2] - self.target_height) ** 2)
+        height_thresh = 0.1  # m = 10 cm
+        z_target_pos = self.target_height
 
-        r_com_pos = 0.75 * xy_com_pos + 0.25 * z_com_pos
+        if qpos[2] < z_target_pos - height_thresh:
+            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
+        elif qpos[2] > z_target_pos + 0.1:
+            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
+        else:
+            z_com_pos = 1.
+
+        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
+        com_vel_coeff = 50
+        
         # Derive horizontal target speed from CP formula and vertical target speed should be 0
         # where x_cp = x_com + x_vel * sqrt(z / 9.81) and y_cp can be captured using the same formula
 
@@ -316,7 +339,7 @@ class CassieEnv:
         #
         # r_com_vel = np.exp(-np.linalg.norm(qvel[:3] - com_target_speed) ** 2)
 
-        r_com_vel = np.exp(-np.linalg.norm(qvel[:3] - np.zeros(3)) ** 2)
+        r_com_vel = np.exp(-com_vel_coeff * np.linalg.norm(qvel[:3] - np.zeros(3)) ** 2)
 
         # 4. Foot Placement
         foot_placement_coeff = 100
@@ -325,9 +348,16 @@ class CassieEnv:
         r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        target_width = 0.18  # 18 cm seems to be optimal
+        width_thresh = 0.05  # m = 5 cm
+        target_width = 0.16  # m = 16 cm seems to be optimal
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
-        r_foot_width = np.exp(-foot_placement_coeff * (feet_width - target_width) ** 2)
+
+        if feet_width < target_width - width_thresh:
+            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width - width_thresh)) ** 2)
+        elif feet_width > target_width + width_thresh:
+            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width + width_thresh)) ** 2)
+        else:
+            r_foot_width = 1.
 
         r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
 
@@ -343,10 +373,10 @@ class CassieEnv:
         # 6. Ground Force Modulation
         target_grf = self.weight / 2.
 
-        left_grf  = np.exp(-2e-3 * (np.linalg.norm(foot_grf[2] - target_grf)) ** 2)
-        right_grf = np.exp(-2e-3 * (np.linalg.norm(foot_grf[5] - target_grf)) ** 2)
+        left_grf  = np.exp(-3e-4 * (np.linalg.norm(foot_grf[2] - target_grf)) ** 2)
+        right_grf = np.exp(-3e-4 * (np.linalg.norm(foot_grf[5] - target_grf)) ** 2)
 
-        r_grf = 0.5 * left_grf + 0.5 * right_grf if np.sum([qvel[0], qvel[1]]) < 0.1 else 0
+        r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # Total Reward
         reward = (rw[0] * r_pose
@@ -375,7 +405,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.1, 0., 0.)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.1, 0.05, 0.05)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -386,10 +416,14 @@ class CassieEnv:
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10], self.cassie_state.motor.velocity[:10])
         c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
 
-        # 4. Action Change Cost
-        actions_coeff = 10
+        # TODO: 4. Action Change Cost
+        actions_coeff = 1
         # actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
-        c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action - self.previous_action) ** 2)
+
+        # only penalize hip yaw, hip roll, and toe motors
+        action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 4, 5, 6, 9]])
+
+        c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action_diff) ** 2)
 
         # 5. Toe Cost
         toe_coeff = 3e-6
@@ -404,7 +438,7 @@ class CassieEnv:
         foot_y_drag = (1 - np.exp(-np.linalg.norm([foot_grf[1], foot_grf[4]]) ** 2)) \
             * (1 - np.exp(-500 * np.linalg.norm([foot_vel[1], foot_vel[4]]) ** 2))
 
-        c_drag = 0.75 * foot_y_drag + 0.25 * foot_x_drag
+        c_drag = 0.8 * foot_y_drag + 0.2 * foot_x_drag
 
         # Update previous torque with current one
         self.previous_action = action
@@ -478,47 +512,74 @@ class CassieEnv:
             # Concatenate clock with ext_state
             ext_state = np.concatenate((clock, ext_state))
 
-        if self.state_est:
-            # pelvis_orientation = self.rotate_to_orient(self.cassie_state.pelvis.orientation[:])
+        # pelvis_orientation = self.rotate_to_orient(self.cassie_state.pelvis.orientation[:])
 
+        # Use state estimator
+        robot_state = np.concatenate([
+
+            # Pelvis States
+            self.cassie_state.pelvis.orientation[:],
+            self.cassie_state.pelvis.rotationalVelocity[:],
+
+            # Motor States
+            self.cassie_state.motor.position[:],
+            self.cassie_state.motor.velocity[:],
+
+        ])
+
+        if not self.reduced_input:
             # Use state estimator
             robot_state = np.concatenate([
+                [self.cassie_state.pelvis.position[2] - self.cassie_state.terrain.height],  # pelvis height
+                self.cassie_state.pelvis.orientation[:],  # pelvis orientation
+                self.cassie_state.motor.position[:],  # actuated joint positions
 
-                # Pelvis States
-                self.cassie_state.pelvis.orientation[:],
-                self.cassie_state.pelvis.rotationalVelocity[:],
+                self.cassie_state.pelvis.translationalVelocity[:],  # pelvis translational velocity
+                self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
+                self.cassie_state.motor.velocity[:],  # actuated joint velocities
 
-                # Motor States
-                self.cassie_state.motor.position[:],
-                self.cassie_state.motor.velocity[:],
+                self.cassie_state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
 
-                # Foot States
-                # self.cassie_state.leftFoot.position[:],
-                # self.cassie_state.rightFoot.position[:],
-
+                self.cassie_state.joint.position[:],  # unactuated joint positions
+                self.cassie_state.joint.velocity[:]  # unactuated joint velocities
             ])
 
-            if not self.reduced_input:
-                # Use state estimator
-                robot_state = np.concatenate([
-                    [self.cassie_state.pelvis.position[2] - self.cassie_state.terrain.height],  # pelvis height
-                    self.cassie_state.pelvis.orientation[:],  # pelvis orientation
-                    self.cassie_state.motor.position[:],  # actuated joint positions
-
-                    self.cassie_state.pelvis.translationalVelocity[:],  # pelvis translational velocity
-                    self.cassie_state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-                    self.cassie_state.motor.velocity[:],  # actuated joint velocities
-
-                    self.cassie_state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
-
-                    self.cassie_state.joint.position[:],  # unactuated joint positions
-                    self.cassie_state.joint.velocity[:]  # unactuated joint velocities
-                ])
-
-            # Concatenate robot_state to ext_state
-            ext_state = np.concatenate((robot_state, ext_state))
+        # Concatenate robot_state to ext_state
+        ext_state = np.concatenate((robot_state, ext_state))
 
         return ext_state
+
+    def mirror_state(self, state):
+
+        if self.reduced_input:
+            index = np.array(
+                [0, -1, 2, -3,
+                 -4, 5, -6,
+                 -12, -13, 14, 15, 16, -7, -8, 9, 10, 11,
+                 -22, -23, 24, 25, 26, -17, -18, 19, 20, 21,
+                 ])
+        else:
+            index = np.array(
+                [0,
+                 1, -2, 3, -4,
+                 -10, -11, 12, 13, 14, -5, -6, 7, 8, 9,
+                 15, -16, 17,
+                 -18, 19, -20,
+                 -26, -27, 28, 29, 30, -21, -22, 23, 24, 25,
+                 31, -32, 33,
+                 37, 38, 39, 34, 35, 36,
+                 43, 44, 45, 40, 41, 42])
+
+        if self.clock_based:
+            index = np.append(index, np.arange(len(index), len(index) + 3))
+        else:
+            index = np.append(index, len(index))
+
+        return mirror(state, index)
+
+    @staticmethod
+    def mirror_action(action, index=(-5, -6, 7, 8, 9, -0.1, -1, 2, 3, 4)):
+        return mirror(action, index)
 
     def render(self):
         if self.vis is None:

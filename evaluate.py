@@ -19,8 +19,6 @@ if __name__ == "__main__":
                         help='Simulation rate in Hz (default: 60)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock and uses reference trajectories')
-    parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
-                        help='Disables state estimator')
     parser.add_argument('--rcut', '-r', type=float, default=0.3, dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold (default: 0.3)')
     parser.add_argument('--tw', type=float, default=1.,
@@ -72,7 +70,6 @@ if __name__ == "__main__":
 
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
-                            state_est=args.state_est,
                             reward_cutoff=args.rcut,
                             target_action_weight=args.tw,
                             forces=args.forces,

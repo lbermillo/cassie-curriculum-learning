@@ -145,6 +145,3 @@ results/
 
 # No clue what these are
 .DS_Store
-
-# utility tools
-log_reader.py
