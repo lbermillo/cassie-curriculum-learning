@@ -65,6 +65,8 @@ if __name__ == '__main__':
                              'If true, discount factor will be overridden (default=False)')
     parser.add_argument('--use_mirror_loss', action='store_true', default=False, dest='mirror_loss',
                         help='Activates mirror loss on actor update. Training will be slow')
+    parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
+                        help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -163,6 +165,7 @@ if __name__ == '__main__':
                             max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
+                            learn_PD=args.learn_PD,
                             debug=args.debug,
                             config=args.config,
                             writer=writer, )

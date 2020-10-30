@@ -19,8 +19,8 @@ class CassieEnv:
     def __init__(self, simrate=50, clock_based=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, target_speed=(0, 0, 0),
                  forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, fall_threshold=0.3,
-                 min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, debug=False,
-                 config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
+                 min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
+                 debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
         # Using CassieSim
         self.config = config
@@ -41,6 +41,7 @@ class CassieEnv:
         self.target_speed = target_speed
         self.power_threshold = power_threshold
         self.reduced_input = reduced_input
+        self.learn_PD = learn_PD
         self.debug = debug
         self.writer = writer
 
@@ -73,6 +74,12 @@ class CassieEnv:
         self.P = np.array([100, 100, 88, 96, 50])
         self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
 
+        if self.learn_PD:
+            self.P = np.array([100, 100, 88, 96, 50,
+                               100, 100, 88, 96, 50])
+            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0,
+                               10.0, 10.0, 8.0, 9.6, 5.0])
+
         self.u = pd_in_t()
 
         self.cassie_state = state_out_t()
@@ -95,14 +102,16 @@ class CassieEnv:
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
         self.vel_idx = [6, 7, 8, 12, 18, 19, 20, 21, 25, 31]
 
+        # Set number of actions based on PD gains are learned or not
+        # (30 if learning PD gains = 10 jont positions + 2 gains * 10 joints)
+        num_actions = 30 if self.learn_PD else 10
+
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
-        self.action_space = gym.spaces.Box(-1. * np.ones(10), 1. * np.ones(10), dtype=np.float32)
+        self.action_space = gym.spaces.Box(-1. * np.ones(num_actions), 1. * np.ones(num_actions), dtype=np.float32)
 
         # Action tracking to penalize large action changes
-        self.previous_action = np.zeros(10)
-
-        # print(len(self.observation_space))
+        self.previous_action = np.zeros(num_actions)
 
     def close(self):
         if self.vis is not None:
@@ -110,6 +119,9 @@ class CassieEnv:
             self.vis = None
 
     def step_simulation(self, action):
+        if self.learn_PD:
+            action, self.P, self.D = action[:10], action[10:20] * 100, action[20:] * 100
+
         # Create Target Action
         target = action + (self.offset_weight * self.offset)
 
@@ -120,11 +132,11 @@ class CassieEnv:
 
         # Apply Action
         for i in range(5):
-            self.u.leftLeg.motorPd.pGain[i] = self.P[i]
-            self.u.rightLeg.motorPd.pGain[i] = self.P[i]
+            self.u.leftLeg.motorPd.pGain[i]  = self.P[i]
+            self.u.rightLeg.motorPd.pGain[i] = self.P[i] if not self.learn_PD else self.P[i + 5]
 
-            self.u.leftLeg.motorPd.dGain[i] = self.D[i]
-            self.u.rightLeg.motorPd.dGain[i] = self.D[i]
+            self.u.leftLeg.motorPd.dGain[i]  = self.D[i]
+            self.u.rightLeg.motorPd.dGain[i] = self.D[i] if not self.learn_PD else self.D[i + 5]
 
             self.u.leftLeg.motorPd.torque[i] = 0  # Feedforward torque
             self.u.rightLeg.motorPd.torque[i] = 0
@@ -168,29 +180,29 @@ class CassieEnv:
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
 
-        # initialize delayed action with current action outputs
-        delayed_action = deepcopy(action)
+        # # initialize delayed action with current action outputs
+        # delayed_action = deepcopy(action)
+        #
+        # # replace hip motors with previous action outputs
+        # # hip roll motors
+        # delayed_action[0] = self.previous_action[0]
+        # delayed_action[5] = self.previous_action[5]
+        #
+        # # hip yaw motors
+        # delayed_action[1] = self.previous_action[1]
+        # delayed_action[6] = self.previous_action[6]
 
-        # replace hip motors with previous action outputs
-        # hip roll motors
-        delayed_action[0] = self.previous_action[0]
-        delayed_action[5] = self.previous_action[5]
-
-        # hip yaw motors
-        delayed_action[1] = self.previous_action[1]
-        delayed_action[6] = self.previous_action[6]
-
-        # hip pitch motors
+        # # hip pitch motors
         # delayed_action[2] = self.previous_action[2]
         # delayed_action[7] = self.previous_action[7]
 
         for rate in range(simrate):
 
-            # TODO: simulate delay in hip motors
-            if rate < simrate * np.random.uniform(0., 0.5):
-                self.step_simulation(delayed_action)
-            else:
-                self.step_simulation(action)
+            # simulate delay in hip motors
+            # if rate < simrate * np.random.uniform(0., 0.5):
+            #     self.step_simulation(delayed_action)
+            # else:
+            #     self.step_simulation(action)
                 
             self.step_simulation(action)
 
@@ -245,6 +257,12 @@ class CassieEnv:
         self.reset_cassie_state()
         self.previous_action = np.zeros(10)
 
+        if self.learn_PD:
+            self.P = np.array([100, 100, 88, 96, 50,
+                               100, 100, 88, 96, 50])
+            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0,
+                               10.0, 10.0, 8.0, 9.6, 5.0])
+
         # randomize mass
         # self.sim.set_body_mass(randomize_mass(self.mass, 0.5, 1.2))
         # self.weight = np.sum(self.sim.get_body_mass()) * 9.81
@@ -289,7 +307,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(1/6, 1/6, 1/6, 1/6, 1/6, 1/6)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0., 0.2, 0.2, 0.2, 0.2)):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -305,7 +323,7 @@ class CassieEnv:
 
         r_pose = np.exp(-5e4 * pose_error ** 2)
 
-        # 2. CoM Position Modulation
+        # TODO: 2. CoM Position Modulation
         xy_com_pos_coeff = 25
         z_com_pos_coeff  = 100
 
@@ -386,6 +404,16 @@ class CassieEnv:
                   + rw[4] * r_fp_orient
                   + rw[5] * r_grf)
 
+        # Staged Reward
+        # if r_pose > 0.9 and r_fp_orient > 0.9:
+        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement
+        # elif r_pose > 0.9 and r_fp_orient > 0.9 and r_foot_placement > 0.9:
+        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement + rw[2] * r_com_vel
+        # elif r_pose > 0.9 and r_fp_orient > 0.9 and r_foot_placement > 0.9 and r_com_vel > 0.9:
+        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement + rw[2] * r_com_vel + rw[5] * r_grf
+        # else:
+        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient
+
         if self.writer is not None and self.debug:
             # log episode reward to tensorboard
             self.writer.add_scalar('env_reward/pose', r_pose, self.total_steps)
@@ -405,23 +433,27 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.1, 0.05, 0.05)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0., 0.0, 0.0)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
         # 2. Ground Contact (At least 1 foot must be on the ground)
         c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
 
-        # 3. Power Consumption
-        power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10], self.cassie_state.motor.velocity[:10])
-        c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
+        # TODO: 3. Power Consumption
+        power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
+                                                    self.cassie_state.motor.velocity[:10])
+        power_coeff = 1e-4
+
+        # c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
+        c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
         # TODO: 4. Action Change Cost
         actions_coeff = 1
         # actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
 
-        # only penalize hip yaw, hip roll, and toe motors
-        action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 4, 5, 6, 9]])
+        # only penalize hip motors
+        action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])
 
         c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action_diff) ** 2)
 

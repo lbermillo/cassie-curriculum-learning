@@ -38,6 +38,8 @@ if __name__ == "__main__":
                              'cassie/cassiemujoco/cassie.xml )')
     parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
+    parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
+                        help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
 
@@ -78,6 +80,7 @@ if __name__ == "__main__":
                             max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
+                            learn_PD=args.learn_PD,
                             config=args.config,
                             debug=args.debug)
 
