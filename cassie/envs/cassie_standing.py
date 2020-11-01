@@ -110,8 +110,9 @@ class CassieEnv:
         self.observation_space = np.zeros(len(self.get_full_state()))
         self.action_space = gym.spaces.Box(-1. * np.ones(num_actions), 1. * np.ones(num_actions), dtype=np.float32)
 
-        # Action tracking to penalize large action changes
+        # Action and velocity tracking for large changes
         self.previous_action = np.zeros(num_actions)
+        self.previous_velocity = self.cassie_state.motor.velocity[:]
 
     def close(self):
         if self.vis is not None:
@@ -255,7 +256,9 @@ class CassieEnv:
         self.timestep = 0
         self.sim.full_reset()
         self.reset_cassie_state()
-        self.previous_action = np.zeros(10)
+        self.previous_action = np.zeros(self.action_space.shape[0])
+        self.previous_velocity = self.cassie_state.motor.velocity[:]
+
 
         if self.learn_PD:
             self.P = np.array([100, 100, 88, 96, 50,
@@ -307,7 +310,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0., 0.2, 0.2, 0.2, 0.2)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1)):
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -344,7 +347,7 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
+        r_com_pos = 0. * xy_com_pos + 1. * z_com_pos
 
         # 3. CoM Velocity Modulation
         com_vel_coeff = 50
@@ -433,7 +436,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0., 0.0, 0.0)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.05, 0.05, 0.0, 0.0)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -449,11 +452,13 @@ class CassieEnv:
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
         # TODO: 4. Action Change Cost
-        actions_coeff = 1
-        # actions_coeff = np.min([self.total_steps * (1e3 / 7e6), 1e3])
+        actions_coeff = 10
 
         # only penalize hip motors
-        action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])
+        # action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])
+
+        # TODO: THIS IS NOT ACTION COST, EXPERIMENTING W/ HIP MOTOR VELOCITY COST
+        action_diff = np.array([self.previous_velocity[i] - self.cassie_state.motor.velocity[i] for i in [0, 1, 2, 5, 6, 7]])
 
         c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action_diff) ** 2)
 
@@ -474,6 +479,9 @@ class CassieEnv:
 
         # Update previous torque with current one
         self.previous_action = action
+        self.previous_velocity = self.cassie_state.motor.velocity[:]
+
+
 
         # Total Cost
         cost = cw[0] * c_fall + cw[1] * c_contact + cw[2] * c_power + cw[3] * c_actions \

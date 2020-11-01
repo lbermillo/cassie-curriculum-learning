@@ -83,22 +83,27 @@ if __name__ == '__main__':
 
     episode_reward = 0
     steps = 0
+    sim2real_diff = []
 
     # flatten state
     state = torch.FloatTensor(np.array(hardware_state[0]).reshape(1, -1))
 
     for step in range(len(hardware_state) - 2):
         # flatten state
-        # state = torch.FloatTensor(np.array(hardware_state[step]).reshape(1, -1))
+        state = torch.FloatTensor(np.array(hardware_state[step]).reshape(1, -1))
 
         # select action according to actor's current policy
         action = policy(state).cpu().data.numpy().flatten()
 
         # execute action
-        state, reward, done, _ = env.step(action)
+        sim_state, reward, done, _ = env.step(action)
         # _, reward, done, _ = env.step(action)
 
-        state = torch.FloatTensor(np.array(state).reshape(1, -1))
+        sim_state = torch.FloatTensor(np.array(sim_state).reshape(1, -1))
+
+        sim2real_diff.append(np.linalg.norm(state - sim_state))
+
+        print('[{}] Action: '.format(step), action)
 
         # l_hip_roll.append(env.cassie_state.motor.torque[0])
         # l_hip_yaw.append(env.cassie_state.motor.torque[1])
@@ -131,8 +136,11 @@ if __name__ == '__main__':
         steps += 1
 
     print('Reward: {:.3f}, Step: {}'.format(episode_reward, steps))
-    plot_motor_data(l_hip_roll, r_hip_roll, 'l_hip_roll', 'r_hip_roll', 'Simulation Output', 'Time', 'Action Output')
-    plot_motor_data(l_hip_yaw, r_hip_yaw, 'l_hip_yaw', 'r_hip_yaw', 'Simulation Output', 'Time', 'Action Output')
-    plot_motor_data(l_hip_pitch, r_hip_pitch, 'l_hip_pitch', 'r_hip_pitch', 'Simulation Output', 'Time', 'Action Output')
-    plot_motor_data(l_knee, r_knee, 'l_knee', 'r_knee', 'Simulation Output', 'Time', 'Action Output')
-    plot_motor_data(l_toe, r_toe, 'l_toe', 'r_toe', 'Simulation Output', 'Time', 'Action Output')
+    plt.plot(sim2real_diff)
+    plt.show()
+
+    # plot_motor_data(l_hip_roll, r_hip_roll, 'l_hip_roll', 'r_hip_roll', 'Simulation Output', 'Time', 'Action Output')
+    # plot_motor_data(l_hip_yaw, r_hip_yaw, 'l_hip_yaw', 'r_hip_yaw', 'Simulation Output', 'Time', 'Action Output')
+    # plot_motor_data(l_hip_pitch, r_hip_pitch, 'l_hip_pitch', 'r_hip_pitch', 'Simulation Output', 'Time', 'Action Output')
+    # plot_motor_data(l_knee, r_knee, 'l_knee', 'r_knee', 'Simulation Output', 'Time', 'Action Output')
+    # plot_motor_data(l_toe, r_toe, 'l_toe', 'r_toe', 'Simulation Output', 'Time', 'Action Output')
