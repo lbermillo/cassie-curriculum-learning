@@ -9,8 +9,8 @@ from cassie.utils.mirror import mirror
 from cassie.utils.quaternion_function import *
 from cassie.trajectory import CassieTrajectory
 from cassie.utils.power_estimation import estimate_power
-from cassie.utils.dynamics_randomization import randomize_mass
 from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
+from cassie.utils.dynamics_randomization import randomize_mass, randomize_friction
 
 
 # Creating the Standing Environment
@@ -45,9 +45,10 @@ class CassieEnv:
         self.debug = debug
         self.writer = writer
 
-        # Cassie properties
+        # Get simulation properties for dynamics randomization and rewards
         self.mass   = self.sim.get_body_mass()
         self.weight = np.sum(self.mass) * 9.81
+        self.friction = self.sim.get_geom_friction()
 
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
         # Already included in cassie_mujoco
@@ -74,12 +75,6 @@ class CassieEnv:
         self.P = np.array([100, 100, 88, 96, 50])
         self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
 
-        if self.learn_PD:
-            self.P = np.array([100, 100, 88, 96, 50,
-                               100, 100, 88, 96, 50])
-            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0,
-                               10.0, 10.0, 8.0, 9.6, 5.0])
-
         self.u = pd_in_t()
 
         self.cassie_state = state_out_t()
@@ -103,8 +98,8 @@ class CassieEnv:
         self.vel_idx = [6, 7, 8, 12, 18, 19, 20, 21, 25, 31]
 
         # Set number of actions based on PD gains are learned or not
-        # (30 if learning PD gains = 10 jont positions + 2 gains * 10 joints)
-        num_actions = 30 if self.learn_PD else 10
+        # (20 if learning PD gains = 2(L/R) * 5 jont positions + 2 (P, D) gains * 5 joints)
+        num_actions = 20 if self.learn_PD else 10
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
@@ -121,7 +116,11 @@ class CassieEnv:
 
     def step_simulation(self, action):
         if self.learn_PD:
-            action, self.P, self.D = action[:10], action[10:20] * 100, action[20:] * 100
+            action, self.P, self.D = action[:10], action[10:15] * 100, action[15:] * 100
+
+            # Make sure there are no negative gains
+            self.P = np.clip(self.P, a_min=0, a_max=None)
+            self.D = np.clip(self.D, a_min=0, a_max=None)
 
         # Create Target Action
         target = action + (self.offset_weight * self.offset)
@@ -134,10 +133,10 @@ class CassieEnv:
         # Apply Action
         for i in range(5):
             self.u.leftLeg.motorPd.pGain[i]  = self.P[i]
-            self.u.rightLeg.motorPd.pGain[i] = self.P[i] if not self.learn_PD else self.P[i + 5]
+            self.u.rightLeg.motorPd.pGain[i] = self.P[i]
 
             self.u.leftLeg.motorPd.dGain[i]  = self.D[i]
-            self.u.rightLeg.motorPd.dGain[i] = self.D[i] if not self.learn_PD else self.D[i + 5]
+            self.u.rightLeg.motorPd.dGain[i] = self.D[i]
 
             self.u.leftLeg.motorPd.torque[i] = 0  # Feedforward torque
             self.u.rightLeg.motorPd.torque[i] = 0
@@ -181,30 +180,7 @@ class CassieEnv:
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
 
-        # # initialize delayed action with current action outputs
-        # delayed_action = deepcopy(action)
-        #
-        # # replace hip motors with previous action outputs
-        # # hip roll motors
-        # delayed_action[0] = self.previous_action[0]
-        # delayed_action[5] = self.previous_action[5]
-        #
-        # # hip yaw motors
-        # delayed_action[1] = self.previous_action[1]
-        # delayed_action[6] = self.previous_action[6]
-
-        # # hip pitch motors
-        # delayed_action[2] = self.previous_action[2]
-        # delayed_action[7] = self.previous_action[7]
-
         for rate in range(simrate):
-
-            # simulate delay in hip motors
-            # if rate < simrate * np.random.uniform(0., 0.5):
-            #     self.step_simulation(delayed_action)
-            # else:
-            #     self.step_simulation(action)
-                
             self.step_simulation(action)
 
             # Foot Force Tracking
@@ -259,19 +235,19 @@ class CassieEnv:
         self.previous_action = np.zeros(self.action_space.shape[0])
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
-
         if self.learn_PD:
-            self.P = np.array([100, 100, 88, 96, 50,
-                               100, 100, 88, 96, 50])
-            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0,
-                               10.0, 10.0, 8.0, 9.6, 5.0])
+            self.P = np.array([100, 100, 88, 96, 50])
+            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
 
-        # randomize mass
-        # self.sim.set_body_mass(randomize_mass(self.mass, 0.5, 1.2))
-        # self.weight = np.sum(self.sim.get_body_mass()) * 9.81
+        # randomize mass and recalculate weight
+        self.sim.set_body_mass(randomize_mass(self.mass, low=0.5, high=1.25))
+        self.weight = np.sum(self.sim.get_body_mass()) * 9.81
+
+        # randomize ground friction
+        self.sim.set_geom_friction(randomize_friction(self.friction, low=0.4, high=1.1))
 
         # randomize target height
-        # self.target_height = np.random.randint(6, 11) / 10
+        # self.target_height = np.random.randint(6, 10) / 10
 
         # reset with perturbations and/or from a different stance (use_phase=True)
         if np.random.rand() < reset_ratio:
@@ -326,7 +302,7 @@ class CassieEnv:
 
         r_pose = np.exp(-5e4 * pose_error ** 2)
 
-        # TODO: 2. CoM Position Modulation
+        # 2. CoM Position Modulation
         xy_com_pos_coeff = 25
         z_com_pos_coeff  = 100
 
@@ -347,7 +323,7 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0. * xy_com_pos + 1. * z_com_pos
+        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
 
         # 3. CoM Velocity Modulation
         com_vel_coeff = 50
@@ -436,12 +412,12 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.05, 0.05, 0.0, 0.0)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.15, 0.05, 0.0)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
         # 2. Ground Contact (At least 1 foot must be on the ground)
-        c_contact = 1 if (foot_grf[2] + foot_grf[5]) == 0 else 0
+        c_contact = 1 if (foot_grf[2] + foot_grf[5]) <= 0 else 0
 
         # TODO: 3. Power Consumption
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
@@ -451,16 +427,15 @@ class CassieEnv:
         # c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
-        # TODO: 4. Action Change Cost
-        actions_coeff = 10
+        # TODO: 4. Hip Acceleration Cost
+        accel_coeff = 10
 
         # only penalize hip motors
         # action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])
+        accel_diff = np.array([self.previous_velocity[i] - self.cassie_state.motor.velocity[i]
+                               for i in [0, 1, 2, 5, 6, 7]])
 
-        # TODO: THIS IS NOT ACTION COST, EXPERIMENTING W/ HIP MOTOR VELOCITY COST
-        action_diff = np.array([self.previous_velocity[i] - self.cassie_state.motor.velocity[i] for i in [0, 1, 2, 5, 6, 7]])
-
-        c_actions = 1 - np.exp(-actions_coeff * np.linalg.norm(action_diff) ** 2)
+        c_accel = 1 - np.exp(-accel_coeff * np.linalg.norm(accel_diff) ** 2)
 
         # 5. Toe Cost
         toe_coeff = 3e-6
@@ -481,10 +456,8 @@ class CassieEnv:
         self.previous_action = action
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
-
-
         # Total Cost
-        cost = cw[0] * c_fall + cw[1] * c_contact + cw[2] * c_power + cw[3] * c_actions \
+        cost = cw[0] * c_fall + cw[1] * c_contact + cw[2] * c_power + cw[3] * c_accel \
             + cw[4] * c_toe + cw[5] * c_drag
 
         if self.writer is not None and self.debug:
@@ -492,12 +465,12 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/fall', c_fall, self.total_steps)
             self.writer.add_scalar('env_cost/foot_contact', c_contact, self.total_steps)
             self.writer.add_scalar('env_cost/power_consumption', c_power, self.total_steps)
-            self.writer.add_scalar('env_cost/action_change', c_actions, self.total_steps)
+            self.writer.add_scalar('env_cost/accel_change', c_accel, self.total_steps)
             self.writer.add_scalar('env_cost/foot_drag', c_drag, self.total_steps)
             self.writer.add_scalar('env_cost/toe_usage', c_toe, self.total_steps)
         elif self.debug:
-            print('Costs:\t Fall [{:.3f}], Contact [{:.3f}], Power [{:.3f}], Action Change [{:.3f}], '
-                  'Toe [{:.3f}], Drag [{:.3f}]\n'.format(c_fall, c_contact, c_power, c_actions, c_toe, c_drag))
+            print('Costs:\t Fall [{:.3f}], Contact [{:.3f}], Power [{:.3f}], Acceleration [{:.3f}], '
+                  'Toe [{:.3f}], Drag [{:.3f}]\n'.format(c_fall, c_contact, c_power, c_accel, c_toe, c_drag))
 
         return cost
 

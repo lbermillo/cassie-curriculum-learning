@@ -2,7 +2,6 @@ import numpy as np
 
 
 def randomize_mass(mass, low, high):
-
     pelvis_mass_range = [[low * mass[1], high * mass[1]]]  # 1
     hip_mass_range    = [[low * mass[2], high * mass[2]],  # 2->4 and 14->16
                          [low * mass[3], high * mass[3]],
@@ -27,4 +26,15 @@ def randomize_mass(mass, low, high):
     mass_range = [[0, 0]] + pelvis_mass_range + side_mass + side_mass
     mass_noise = [np.random.uniform(a, b) for a, b in mass_range]
 
-    return np.clip(mass_noise, 0, None)
+    return np.clip(mass_noise, a_min=0, a_max=None)
+
+
+def randomize_friction(friction, low, high):
+    friction_noise = []
+    translational = np.random.uniform(low, high)
+    torsional = np.random.uniform(1e-4, 5e-4)
+    rolling = np.random.uniform(1e-4, 2e-4)
+    for _ in range(int(len(friction) / 3)):
+        friction_noise += [translational, torsional, rolling]
+
+    return np.clip(friction_noise, a_min=0, a_max=None)
