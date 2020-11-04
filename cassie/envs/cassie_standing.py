@@ -72,8 +72,8 @@ class CassieEnv:
         self.total_steps = 0
 
         # Initial Actions
-        self.P = np.array([100, 100, 88, 96, 50])
-        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
+        self.P = np.array([100., 100., 88., 96., 50.]) if not self.learn_PD else np.random.randint(low=0, high=100, size=5)
+        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0]) if not self.learn_PD else np.random.randint(low=0, high=100, size=5)
 
         self.u = pd_in_t()
 
@@ -236,8 +236,8 @@ class CassieEnv:
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
         if self.learn_PD:
-            self.P = np.array([100, 100, 88, 96, 50])
-            self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0])
+            self.P = np.random.randint(low=0, high=100, size=5)
+            self.D = np.random.randint(low=0, high=100, size=5)
 
         # randomize mass and recalculate weight
         self.sim.set_body_mass(randomize_mass(self.mass, low=0.5, high=1.25))
