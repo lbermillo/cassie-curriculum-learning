@@ -100,6 +100,7 @@ class CassieEnv:
         # Set number of actions based on PD gains are learned or not
         # (20 if learning PD gains = 2(L/R) * 5 jont positions + 2 (P, D) gains * 5 joints)
         num_actions = 20 if self.learn_PD else 10
+        # num_actions = 6 # TODO: Removing policy  control of hip yaw and hip roll
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
@@ -116,13 +117,11 @@ class CassieEnv:
 
     def step_simulation(self, action):
         if self.learn_PD:
-            action, self.P, self.D = action[:10], action[10:15] * 100, action[15:] * 100
+            action, self.P, self.D = action[:10], np.abs(action[10:15] * 100), np.abs(action[15:] * 10)
 
-            # Make sure there are no negative gains
-            self.P = np.clip(self.P, a_min=0, a_max=None)
-            self.D = np.clip(self.D, a_min=0, a_max=None)
-
-        # Create Target Action
+        # TODO: Create Target Action
+        # action = np.array([0., 0., action[0], action[1], action[2],
+        #                    0., 0., action[3], action[4], action[5]])
         target = action + (self.offset_weight * self.offset)
 
         foot_pos = np.zeros(6)
@@ -169,7 +168,7 @@ class CassieEnv:
         # if np.random.randint(300) == 0:
         #     self.orient_add += np.random.uniform(-self.max_orient_change, self.max_orient_change)
 
-        # TODO: simulating delays
+        # simulating delays
         simrate = self.simrate + np.random.randint(-10, 10)
         # simrate = self.simrate
 
@@ -237,7 +236,7 @@ class CassieEnv:
 
         if self.learn_PD:
             self.P = np.random.randint(low=0, high=100, size=5)
-            self.D = np.random.randint(low=0, high=100, size=5)
+            self.D = np.random.randint(low=0, high=10,  size=5)
 
         # randomize mass and recalculate weight
         self.sim.set_body_mass(randomize_mass(self.mass, low=0.5, high=1.25))
@@ -286,7 +285,12 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1, 0.)):
+        # Weights w/out reference (0.225, 0.05, 0.15, 0.2, 0.275, 0.1, 0.)
+        # Weights w/    reference (0.01, 0., 0.33, 0., 0., 0.33, 0.33)
+
+        # TODO: norm squared pose deviation from offset 10% - 20%
+        # TODO: learn hip pitch only no action in yaw and the roll
 
         left_foot_pos = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -303,14 +307,13 @@ class CassieEnv:
         r_pose = np.exp(-5e4 * pose_error ** 2)
 
         # 2. CoM Position Modulation
-        xy_com_pos_coeff = 25
-        z_com_pos_coeff  = 100
+        com_pos_coeff = 50
 
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
 
-        xy_com_pos = np.exp(-xy_com_pos_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
+        xy_com_pos = np.exp(-com_pos_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
         height_thresh = 0.1  # m = 10 cm
@@ -319,11 +322,11 @@ class CassieEnv:
         if qpos[2] < z_target_pos - height_thresh:
             z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
         elif qpos[2] > z_target_pos + 0.1:
-            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
+            z_com_pos = np.exp(-com_pos_coeff * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0.5 * xy_com_pos + 0.5 * z_com_pos
+        r_com_pos = 0.75 * xy_com_pos + 0.25 * z_com_pos
 
         # 3. CoM Velocity Modulation
         com_vel_coeff = 50
@@ -375,23 +378,17 @@ class CassieEnv:
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
+        # 7. Joint Position Reference (Offset is a standing position)
+        r_ref = np.exp(-np.linalg.norm(self.cassie_state.motor.position[:] - self.offset) ** 2)
+
         # Total Reward
         reward = (rw[0] * r_pose
                   + rw[1] * r_com_pos
                   + rw[2] * r_com_vel
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient
-                  + rw[5] * r_grf)
-
-        # Staged Reward
-        # if r_pose > 0.9 and r_fp_orient > 0.9:
-        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement
-        # elif r_pose > 0.9 and r_fp_orient > 0.9 and r_foot_placement > 0.9:
-        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement + rw[2] * r_com_vel
-        # elif r_pose > 0.9 and r_fp_orient > 0.9 and r_foot_placement > 0.9 and r_com_vel > 0.9:
-        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient + rw[3] * r_foot_placement + rw[2] * r_com_vel + rw[5] * r_grf
-        # else:
-        #     reward = rw[0] * r_pose + rw[4] * r_fp_orient
+                  + rw[5] * r_grf
+                  + rw[6] * r_ref)
 
         if self.writer is not None and self.debug:
             # log episode reward to tensorboard
@@ -401,14 +398,16 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
             self.writer.add_scalar('env_reward/grf', r_grf, self.total_steps)
+            self.writer.add_scalar('env_reward/joint_ref', r_ref, self.total_steps)
         elif self.debug:
-            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
-                                                                                                                  r_pose,
-                                                                                                                  r_com_pos,
-                                                                                                                  r_com_vel,
-                                                                                                                  r_foot_placement,
-                                                                                                                  r_fp_orient,
-                                                                                                                  r_grf, ))
+            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]], Reference[{:.3f}]'.format(self.timestep,
+                                                                                                                                     r_pose,
+                                                                                                                                     r_com_pos,
+                                                                                                                                     r_com_vel,
+                                                                                                                                     r_foot_placement,
+                                                                                                                                     r_fp_orient,
+                                                                                                                                     r_grf,
+                                                                                                                                     r_ref, ))
 
         return reward
 
