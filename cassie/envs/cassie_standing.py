@@ -320,7 +320,7 @@ class CassieEnv:
         z_target_pos = self.target_height
 
         if qpos[2] < z_target_pos - height_thresh:
-            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
+            z_com_pos = np.exp(-com_pos_coeff * (qpos[2] - (z_target_pos - height_thresh)) ** 2)
         elif qpos[2] > z_target_pos + 0.1:
             z_com_pos = np.exp(-com_pos_coeff * (qpos[2] - (z_target_pos + height_thresh)) ** 2)
         else:
