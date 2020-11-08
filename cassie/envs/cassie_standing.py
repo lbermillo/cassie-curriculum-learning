@@ -71,9 +71,10 @@ class CassieEnv:
         self.timestep = 0
         self.total_steps = 0
 
+        # TODO: learn_PD
         # Initial Actions
-        self.P = np.array([100., 100., 88., 96., 50.]) if not self.learn_PD else np.random.randint(low=0, high=100, size=5)
-        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0]) if not self.learn_PD else np.random.randint(low=0, high=100, size=5)
+        self.P = np.array([100., 100., 88., 96., 50.]) if not self.learn_PD else np.random.randint(low=0, high=100, size=10)
+        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0]) if not self.learn_PD else np.random.randint(low=0, high=100, size=10)
 
         self.u = pd_in_t()
 
@@ -97,9 +98,11 @@ class CassieEnv:
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
         self.vel_idx = [6, 7, 8, 12, 18, 19, 20, 21, 25, 31]
 
+        # TODO: learn_PD
         # Set number of actions based on PD gains are learned or not
-        # (20 if learning PD gains = 2(L/R) * 5 jont positions + 2 (P, D) gains * 5 joints)
-        num_actions = 20 if self.learn_PD else 10
+        # (30 if learning PD gains = 10 jont positions + 2 gains * 10 joints)
+        num_actions = 30 if self.learn_PD else 10
+
         # num_actions = 6 # TODO: Removing policy  control of hip yaw and hip roll
 
         # Initialize Observation and Action Spaces
@@ -116,8 +119,10 @@ class CassieEnv:
             self.vis = None
 
     def step_simulation(self, action):
+
+        # TODO: learn_PD
         if self.learn_PD:
-            action, self.P, self.D = action[:10], np.abs(action[10:15] * 100), np.abs(action[15:] * 10)
+            action, self.P, self.D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
 
         # TODO: Create Target Action
         # action = np.array([0., 0., action[0], action[1], action[2],
@@ -196,6 +201,9 @@ class CassieEnv:
         qpos = np.copy(self.sim.qpos())
         qvel = np.copy(self.sim.qvel())
 
+        # TODO: print qpos
+        # print(qpos)
+
         # Get the average foot positions and forces
         self.l_foot_frc /= self.simrate
         self.r_foot_frc /= self.simrate
@@ -234,16 +242,20 @@ class CassieEnv:
         self.previous_action = np.zeros(self.action_space.shape[0])
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
+        # TODO: learn_PD
         if self.learn_PD:
-            self.P = np.random.randint(low=0, high=100, size=5)
-            self.D = np.random.randint(low=0, high=10,  size=5)
+            self.P = np.random.randint(low=0, high=100, size=10)
+            self.D = np.random.randint(low=0, high=10,  size=10)
 
-        # randomize mass and recalculate weight
+        # TODO: randomize mass and recalculate weight
         self.sim.set_body_mass(randomize_mass(self.mass, low=0.5, high=1.25))
         self.weight = np.sum(self.sim.get_body_mass()) * 9.81
 
-        # randomize ground friction
+        # TODO: randomize ground friction
         self.sim.set_geom_friction(randomize_friction(self.friction, low=0.4, high=1.1))
+
+        # TODO: randomize initial height
+        self.randomize_init_height()
 
         # randomize target height
         # self.target_height = np.random.randint(6, 10) / 10
@@ -270,6 +282,9 @@ class CassieEnv:
             # set joint velocities
             self.sim.set_qvel(qvel)
 
+        # Take a step to set cassie_state
+        self.cassie_state = self.sim.step_pd(self.u)
+
         return self.get_full_state()
 
     def reset_cassie_state(self):
@@ -285,10 +300,39 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1, 0.)):
-        # Weights w/out reference (0.225, 0.05, 0.15, 0.2, 0.275, 0.1, 0.)
-        # Weights w/    reference (0.01, 0., 0.33, 0., 0., 0.33, 0.33)
+    def randomize_init_height(self):
+        low_start = [0.02477726, -0.01568609, 0.61515595, 0.99910102, -0.03834618, -0.01492016,
+                     -0.01020324, 0.10320576, -0.01822352, 0.78221161, 0.77875311, -0.00615072,
+                     0.07485685, -0.62281796, -2.10276909, -0.06401924, 2.5159155, -0.06195463,
+                     -1.93171504, 1.91307376, -2.03487245, 0.1189546, 0.03197041, 0.75972677,
+                     0.79644527, -0.002866, -0.06312636, -0.60139985, -2.03505813, -0.07590401,
+                     2.47309159, -0.06861883, -1.92336564, 1.90473564, -2.02667971]
 
+        mid_start = [-2.83004740e-03, -2.29114732e-02, 7.07065845e-01, 9.99894779e-01,
+                     1.10562740e-02, -6.12652366e-03, 7.11723211e-03, 1.50099449e-02,
+                     1.64266778e-02, 8.24133043e-01, 8.37481179e-01, -9.69445402e-03,
+                     6.13690062e-02, -5.42922773e-01, -1.90945471e+00, -4.85589866e-02,
+                     2.26580429e+00, -4.62971329e-02, -1.91282419e+00, 1.89426871e+00,
+                     -2.01747242e+00, 2.31781351e-03, 1.44250744e-02, 8.12155963e-01,
+                     8.36154471e-01, -1.00090471e-03, -5.47184822e-02, -5.45756894e-01,
+                     -1.90783323e+00, -5.71023096e-02, 2.28292790e+00, -5.06616206e-02,
+                     -1.90963150e+00, 1.89109144e+00, -2.01460222e+00]
+
+        high_start = [6.10130896e-04, -3.23304477e-04, 1.00659806e+00, 9.99977272e-01,
+                      -1.24530409e-03, -6.60246460e-03, 5.58494911e-04, 1.06175814e-02,
+                      6.16906927e-03, 4.46850777e-01, 9.81816364e-01, -1.65223535e-02,
+                      1.59090533e-02, -1.88442409e-01, -1.13004694e+00, -4.11360961e-02,
+                      1.44296047e+00, -2.39222365e-02, -1.46633365e+00, 1.44824750e+00,
+                      -1.57126122e+00, -2.79549256e-03, 6.46317570e-03, 4.50763457e-01,
+                      9.81461310e-01, 4.00951503e-03, -1.37635448e-02, -1.91123483e-01,
+                      -1.15727612e+00, -1.67963434e-02, 1.43236886e+00, -2.01196652e-02,
+                      -1.48618073e+00, 1.46805721e+00, -1.59446755e+00]
+
+        init_height = random.choice([low_start, mid_start, high_start])
+
+        self.sim.set_qpos(init_height)
+
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1)):
         # TODO: norm squared pose deviation from offset 10% - 20%
         # TODO: learn hip pitch only no action in yaw and the roll
 
@@ -373,13 +417,13 @@ class CassieEnv:
         # 6. Ground Force Modulation
         target_grf = self.weight / 2.
 
-        left_grf  = np.exp(-3e-4 * (np.linalg.norm(foot_grf[2] - target_grf)) ** 2)
-        right_grf = np.exp(-3e-4 * (np.linalg.norm(foot_grf[5] - target_grf)) ** 2)
+        left_grf  = np.exp(-5e-4 * (np.linalg.norm(foot_grf[2] - target_grf)) ** 2)
+        right_grf = np.exp(-5e-4 * (np.linalg.norm(foot_grf[5] - target_grf)) ** 2)
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
         # 7. Joint Position Reference (Offset is a standing position)
-        r_ref = np.exp(-np.linalg.norm(self.cassie_state.motor.position[:] - self.offset) ** 2)
+        # r_ref = np.exp(-np.linalg.norm(self.cassie_state.motor.position[:] - self.offset) ** 2)
 
         # Total Reward
         reward = (rw[0] * r_pose
@@ -387,8 +431,7 @@ class CassieEnv:
                   + rw[2] * r_com_vel
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient
-                  + rw[5] * r_grf
-                  + rw[6] * r_ref)
+                  + rw[5] * r_grf)
 
         if self.writer is not None and self.debug:
             # log episode reward to tensorboard
@@ -398,20 +441,19 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
             self.writer.add_scalar('env_reward/grf', r_grf, self.total_steps)
-            self.writer.add_scalar('env_reward/joint_ref', r_ref, self.total_steps)
         elif self.debug:
-            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]], Reference[{:.3f}]'.format(self.timestep,
-                                                                                                                                     r_pose,
-                                                                                                                                     r_com_pos,
-                                                                                                                                     r_com_vel,
-                                                                                                                                     r_foot_placement,
-                                                                                                                                     r_fp_orient,
-                                                                                                                                     r_grf,
-                                                                                                                                     r_ref, ))
+            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
+                                                                                                                  r_pose,
+                                                                                                                  r_com_pos,
+                                                                                                                  r_com_vel,
+                                                                                                                  r_foot_placement,
+                                                                                                                  r_fp_orient,
+                                                                                                                  r_grf,
+                                                                                                                  ))
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.15, 0.05, 0.0)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0., 0.05, 0.)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -427,7 +469,7 @@ class CassieEnv:
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
         # TODO: 4. Hip Acceleration Cost
-        accel_coeff = 10
+        accel_coeff = 5
 
         # only penalize hip motors
         # action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])

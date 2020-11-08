@@ -85,59 +85,68 @@ if __name__ == '__main__':
     steps = 0
     sim2real_diff = []
 
-    # flatten state
-    state = torch.FloatTensor(np.array(hardware_state[0]).reshape(1, -1))
+    full_state = log_data['state']
 
-    for step in range(len(hardware_state) - 2):
-        # flatten state
-        state = torch.FloatTensor(np.array(hardware_state[step]).reshape(1, -1))
+    # TODO: Rebuild states for qpos
+    print(full_state[0].motor.position[:3])
 
-        # select action according to actor's current policy
-        action = policy(state).cpu().data.numpy().flatten()
+    # pelvis_x, pelvis_y, pelvis_z = cassie_state.pelvis.position[:]
+    # pelvis_qw, pelvis_qx, pelvis_py, pelvis_pz = cassie_state.pelvis.orientation[:]
+    # l_hip_roll, l_hip_yaw, l_hip_pitch = cassie_state.motor.position[:3]
 
-        # execute action
-        sim_state, reward, done, _ = env.step(action)
-        # _, reward, done, _ = env.step(action)
+    # # flatten state
+    # state = torch.FloatTensor(np.array(hardware_state[0]).reshape(1, -1))
 
-        sim_state = torch.FloatTensor(np.array(sim_state).reshape(1, -1))
-
-        sim2real_diff.append(np.linalg.norm(state - sim_state))
-
-        print('[{}] Action: '.format(step), action)
-
-        # l_hip_roll.append(env.cassie_state.motor.torque[0])
-        # l_hip_yaw.append(env.cassie_state.motor.torque[1])
-        # l_hip_pitch.append(env.cassie_state.motor.torque[2])
-        # l_knee.append(env.cassie_state.motor.torque[3])
-        # l_toe.append(env.cassie_state.motor.torque[4])
-        #
-        # r_hip_roll.append(env.cassie_state.motor.torque[5])
-        # r_hip_yaw.append(env.cassie_state.motor.torque[6])
-        # r_hip_pitch.append(env.cassie_state.motor.torque[7])
-        # r_knee.append(env.cassie_state.motor.torque[8])
-        # r_toe.append(env.cassie_state.motor.torque[9])
-
-        l_hip_roll.append(action[0])
-        l_hip_yaw.append(action[1])
-        l_hip_pitch.append(action[2])
-        l_knee.append(action[3])
-        l_toe.append( action[4])
-
-        r_hip_roll.append( action[5])
-        r_hip_yaw.append(  action[6])
-        r_hip_pitch.append(action[7])
-        r_knee.append(     action[8])
-        r_toe.append(      action[9])
-
-        # add to replay buffer
-        r_buffer.push(hardware_state[step], action, hardware_state[step + 1], reward, done)
-
-        episode_reward += reward
-        steps += 1
-
-    print('Reward: {:.3f}, Step: {}'.format(episode_reward, steps))
-    plt.plot(sim2real_diff)
-    plt.show()
+    # for step in range(len(hardware_state) - 2):
+    #     # flatten state
+    #     state = torch.FloatTensor(np.array(hardware_state[step]).reshape(1, -1))
+    #
+    #     # select action according to actor's current policy
+    #     action = policy(state).cpu().data.numpy().flatten()
+    #
+    #     # execute action
+    #     sim_state, reward, done, _ = env.step(action)
+    #     # _, reward, done, _ = env.step(action)
+    #
+    #     sim_state = torch.FloatTensor(np.array(sim_state).reshape(1, -1))
+    #
+    #     sim2real_diff.append(np.linalg.norm(state - sim_state))
+    #
+    #     print('[{}] Action: '.format(step), action)
+    #
+    #     # l_hip_roll.append(env.cassie_state.motor.torque[0])
+    #     # l_hip_yaw.append(env.cassie_state.motor.torque[1])
+    #     # l_hip_pitch.append(env.cassie_state.motor.torque[2])
+    #     # l_knee.append(env.cassie_state.motor.torque[3])
+    #     # l_toe.append(env.cassie_state.motor.torque[4])
+    #     #
+    #     # r_hip_roll.append(env.cassie_state.motor.torque[5])
+    #     # r_hip_yaw.append(env.cassie_state.motor.torque[6])
+    #     # r_hip_pitch.append(env.cassie_state.motor.torque[7])
+    #     # r_knee.append(env.cassie_state.motor.torque[8])
+    #     # r_toe.append(env.cassie_state.motor.torque[9])
+    #
+    #     l_hip_roll.append(action[0])
+    #     l_hip_yaw.append(action[1])
+    #     l_hip_pitch.append(action[2])
+    #     l_knee.append(action[3])
+    #     l_toe.append( action[4])
+    #
+    #     r_hip_roll.append( action[5])
+    #     r_hip_yaw.append(  action[6])
+    #     r_hip_pitch.append(action[7])
+    #     r_knee.append(     action[8])
+    #     r_toe.append(      action[9])
+    #
+    #     # add to replay buffer
+    #     r_buffer.push(hardware_state[step], action, hardware_state[step + 1], reward, done)
+    #
+    #     episode_reward += reward
+    #     steps += 1
+    #
+    # print('Reward: {:.3f}, Step: {}'.format(episode_reward, steps))
+    # plt.plot(sim2real_diff)
+    # plt.show()
 
     # plot_motor_data(l_hip_roll, r_hip_roll, 'l_hip_roll', 'r_hip_roll', 'Simulation Output', 'Time', 'Action Output')
     # plot_motor_data(l_hip_yaw, r_hip_yaw, 'l_hip_yaw', 'r_hip_yaw', 'Simulation Output', 'Time', 'Action Output')
