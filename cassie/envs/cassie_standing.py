@@ -248,11 +248,11 @@ class CassieEnv:
             self.D = np.random.randint(low=0, high=10,  size=10)
 
         # TODO: randomize mass and recalculate weight
-        self.sim.set_body_mass(randomize_mass(self.mass, low=0.5, high=1.25))
+        self.sim.set_body_mass(randomize_mass(self.mass, low=0.9, high=1.1))
         self.weight = np.sum(self.sim.get_body_mass()) * 9.81
 
         # TODO: randomize ground friction
-        self.sim.set_geom_friction(randomize_friction(self.friction, low=0.4, high=1.1))
+        self.sim.set_geom_friction(randomize_friction(self.friction, low=0.9, high=1.1))
 
         # TODO: randomize initial height
         self.randomize_init_height()
@@ -332,7 +332,11 @@ class CassieEnv:
 
         self.sim.set_qpos(init_height)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.15, 0.25, 0.15, 0.15, 0.15, 0.15)):
+        # (pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation, grf)
+
+        # rw=(0.225, 0.05, 0.15, 0.2, 0.275, 0.1)
+        # rw=(0.25, 0.1, 0.15, 0., 0.3, 0.2)
         # TODO: norm squared pose deviation from offset 10% - 20%
         # TODO: learn hip pitch only no action in yaw and the roll
 
@@ -344,11 +348,12 @@ class CassieEnv:
 
         # A. Task Rewards
 
-        # 1. Pelvis Orientation [https://math.stackexchange.com/questions/90081/quaternion-distance]
-        target_pose = np.array([1, 0, 0, 0])
-        pose_error = 1 - np.inner(qpos[3:7], target_pose) ** 2
+        # 1. Pelvis Orientation
+        pelvis_roll, pelvis_pitch, pelvis_yaw = quaternion2euler(qpos[3:7])
+        r_roll_pitch = np.exp(-10 * np.linalg.norm([pelvis_roll, pelvis_yaw]) ** 2)
+        r_pitch      = np.exp(-pelvis_pitch ** 2)
 
-        r_pose = np.exp(-5e4 * pose_error ** 2)
+        r_pose = 0.8 * r_roll_pitch + 0.2 * r_pitch
 
         # 2. CoM Position Modulation
         com_pos_coeff = 50
@@ -370,7 +375,7 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0.75 * xy_com_pos + 0.25 * z_com_pos
+        r_com_pos = 0.8 * xy_com_pos + 0.2 * z_com_pos
 
         # 3. CoM Velocity Modulation
         com_vel_coeff = 50
@@ -392,8 +397,8 @@ class CassieEnv:
         r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        width_thresh = 0.05  # m = 5 cm
-        target_width = 0.16  # m = 16 cm seems to be optimal
+        width_thresh = 0.03  # m = 3 cm
+        target_width = 0.18  # m = 18 cm makes the support polygon a square
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
@@ -403,11 +408,10 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.5 * r_feet_align + 0.5 * r_foot_width
+        r_foot_placement = 0.25 * r_feet_align + 0.75 * r_foot_width
 
         # 5. Foot/Pelvis Orientation
-        fp_orientation_coeff = 5e2
-        _, _, pelvis_yaw = quaternion2euler(qpos[3:7])
+        fp_orientation_coeff = 10
         foot_yaw = np.array([qpos[8], qpos[22]])
         left_foot_orient  = np.exp(-fp_orientation_coeff * (foot_yaw[0] - pelvis_yaw) ** 2)
         right_foot_orient = np.exp(-fp_orientation_coeff * (foot_yaw[1] - pelvis_yaw) ** 2)
@@ -453,7 +457,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0., 0.05, 0.)):
+    def compute_cost(self, qpos, action, foot_vel, foot_grf, cw=(0.4, 0.3, 0.1, 0.1, 0.05, 0.05)):
         # 1. Falling
         c_fall = 1 if qpos[2] < self.target_height - self.fall_threshold else 0
 
@@ -468,13 +472,12 @@ class CassieEnv:
         # c_power = 1. / (1. + np.exp(-(power_estimate - self.power_threshold)))
         c_power = 1. - np.exp(-power_coeff * power_estimate ** 2)
 
-        # TODO: 4. Hip Acceleration Cost
-        accel_coeff = 5
+        # TODO: 4. Acceleration Cost
+        accel_coeff = 2.5
 
         # only penalize hip motors
         # action_diff = np.array([action[i] - self.previous_action[i] for i in [0, 1, 2, 5, 6, 7]])
-        accel_diff = np.array([self.previous_velocity[i] - self.cassie_state.motor.velocity[i]
-                               for i in [0, 1, 2, 5, 6, 7]])
+        accel_diff = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
 
         c_accel = 1 - np.exp(-accel_coeff * np.linalg.norm(accel_diff) ** 2)
 
