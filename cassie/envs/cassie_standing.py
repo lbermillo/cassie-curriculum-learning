@@ -101,9 +101,9 @@ class CassieEnv:
         # TODO: learn_PD
         # Set number of actions based on PD gains are learned or not
         # (30 if learning PD gains = 10 jont positions + 2 gains * 10 joints)
-        num_actions = 30 if self.learn_PD else 10
+        # num_actions = 30 if self.learn_PD else 10
 
-        # num_actions = 6 # TODO: Removing policy  control of hip yaw and hip roll
+        num_actions = 6 # TODO: Removing policy  control of hip yaw and hip roll
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
@@ -125,8 +125,8 @@ class CassieEnv:
             action, self.P, self.D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
 
         # TODO: Create Target Action
-        # action = np.array([0., 0., action[0], action[1], action[2],
-        #                    0., 0., action[3], action[4], action[5]])
+        action = np.array([0., 0., action[0], action[1], action[2],
+                           0., 0., action[3], action[4], action[5]])
         target = action + (self.offset_weight * self.offset)
 
         foot_pos = np.zeros(6)
@@ -136,9 +136,11 @@ class CassieEnv:
 
         # Apply Action
         for i in range(5):
+            # TODO: learn_PD
             self.u.leftLeg.motorPd.pGain[i]  = self.P[i]
             self.u.rightLeg.motorPd.pGain[i] = self.P[i]
 
+            # TODO: learn_PD
             self.u.leftLeg.motorPd.dGain[i]  = self.D[i]
             self.u.rightLeg.motorPd.dGain[i] = self.D[i]
 
