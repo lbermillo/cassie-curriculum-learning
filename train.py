@@ -105,6 +105,8 @@ if __name__ == '__main__':
                         help='Policy update frequency (default=2)')
     parser.add_argument('--policy_noise', type=float, default=0.35,
                         help='Noise added to target networks during critic update (default=0.35)')
+    parser.add_argument('--noise_clip', type=float, default=0.5,
+                        help='Noise clipping for target action regularization (default=0.5)')
 
     # SAC Specific Parameters
     parser.add_argument('--alpha', type=float, default=0.2,
@@ -128,10 +130,10 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}LRNPD{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}FH{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
-        args.tw,
+        args.learn_PD,
         args.algo.upper(),
         args.alr,
         args.clr,
@@ -142,7 +144,6 @@ if __name__ == '__main__':
         args.seed,
         args.reset_ratio,
         [args.min_speed[0], args.max_speed[0]],
-        args.power_threshold,
         args.fall_threshold,
         args.clock,
         args.reduced_input,
@@ -185,6 +186,7 @@ if __name__ == '__main__':
                       discount=args.discount,
                       tau=args.tau,
                       policy_noise=args.policy_noise,
+                      noise_clip=args.noise_clip,
                       random_action_steps=args.start_steps,
                       use_mirror_loss=args.mirror_loss,
                       capacity=args.buffer,

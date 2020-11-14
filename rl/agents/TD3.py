@@ -101,7 +101,7 @@ class Agent:
             # delay updates for actor and target networks
             if step % self.policy_update_freq == 0:
                 # update actor policy using the sampled policy gradient
-                actor_loss = self.model.update_actor(state, env, mirror=self.use_mirror_loss)
+                actor_loss = self.model.update_actor(state)
 
                 if self.writer:
                     # log episode reward to tensorboard
@@ -201,7 +201,8 @@ class Agent:
 
                 # update reward termination
                 if self.tc is not None:
-                    env.reward_cutoff = max(self.tc[0] - (self.total_steps / (2 * training_steps)), self.tc[1])
+                    # decay, for growth just remove "tc[0] -" from the first term
+                    env.reward_cutoff = max(self.tc[0] - (self.total_steps * self.tc[0]) / training_steps, self.tc[1])
 
                 if self.writer:
                     # log eval rewards to tensorboard

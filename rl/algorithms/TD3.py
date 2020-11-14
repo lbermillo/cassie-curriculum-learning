@@ -78,18 +78,12 @@ class TD3:
         # return critic loss for logging
         return critic_loss
 
-    def update_actor(self, state, env, mirror=False):
+    def update_actor(self, state, reg_coeff=1e-4):
         # compute q using policy
         q1, _ = self.critic(state, self.actor(state))
 
-        # Implementation based on Learning Symmetric and Low-Energy Locomotion [https://arxiv.org/pdf/1801.08093.pdf]
-        mirror_loss = np.sum(
-            [np.linalg.norm(self.act(s.cpu().data.numpy())
-                            - env.mirror_action(self.act(env.mirror_state(s.cpu().data.numpy())))) ** 2
-             for s in state]) / len(state) if mirror else 0
-
         # compute actor loss
-        actor_loss = -q1.mean() + mirror_loss
+        actor_loss = -q1.mean() # + reg_coeff * torch.norm(self.actor(state)) ** 2
 
         # optimize actor
         self.actor_optimizer.zero_grad()
