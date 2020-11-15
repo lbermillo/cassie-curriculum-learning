@@ -455,7 +455,7 @@ class CassieEnv:
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient)
 
-        if self.writer is not None and self.debug:
+        if self.writer is not None and self.debug and not self.test:
             # log episode reward to tensorboard
             self.writer.add_scalar('env_reward/pose', r_pose, self.total_steps)
             self.writer.add_scalar('env_reward/com_pos', r_com_pos, self.total_steps)
@@ -497,7 +497,7 @@ class CassieEnv:
         self.previous_action = action
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
-        if self.writer is not None and self.debug:
+        if self.writer is not None and self.debug and not self.test:
             # log episode reward to tensorboard
             self.writer.add_scalar('env_cost/action_change', c_action, self.total_steps)
             self.writer.add_scalar('env_cost/motor_accel', c_maccel, self.total_steps)
