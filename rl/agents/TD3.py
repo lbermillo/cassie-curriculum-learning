@@ -177,14 +177,14 @@ class Agent:
         return total_rewards / eval_eps
 
     def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results',
-              filename=None, reset_ratio=0, use_phase=False, adaptive_discount=False):
+              filename=None, reset_ratio=0, use_phase=False):
         episode = 0
         best_score = 0.0
-        if adaptive_discount:
-            self.model.discount = 0.25
-            discount_rate = (0.99 - self.model.discount) / (0.75 * (training_steps - self.batch_size))
 
         while self.total_steps < training_steps:
+            # set environment to training mode
+            env.train()
+
             # collect experiences
             episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise, reset_ratio=reset_ratio, use_phase=use_phase)
 
@@ -197,6 +197,11 @@ class Agent:
 
             # evaluate current policy
             if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
+
+                # set environment to eval mode
+                env.eval()
+
+                # get evaluation score
                 score = self.evaluate(env, render=False)
 
                 # update reward termination
@@ -218,13 +223,5 @@ class Agent:
                         self.model.save(directory, filename)
 
             episode += 1
-
-            if adaptive_discount and self.total_steps > self.random_action_steps:
-                # update discount factor for the next episode
-                self.model.discount = 0.25 + (0.99 * self.total_steps) / (training_steps - self.batch_size) \
-                    if self.model.discount < 0.99 else 0.99
-
-                print(self.total_steps, self.model.discount)
-
 
 

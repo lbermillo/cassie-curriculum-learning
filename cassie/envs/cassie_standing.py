@@ -15,7 +15,7 @@ from cassie.utils.dynamics_randomization import randomize_mass, randomize_fricti
 
 class CassieEnv:
 
-    def __init__(self, simrate=50, clock_based=True,
+    def __init__(self, training_steps, simrate=50, clock_based=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8,
                  forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.3,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
@@ -29,6 +29,7 @@ class CassieEnv:
         # Initialize parameters
         self.clock_based = clock_based
         self.reward_cutoff = reward_cutoff
+        self.training_steps = training_steps
         self.forces = forces
         self.force_fq = force_fq
         self.min_height = min_height
@@ -118,6 +119,15 @@ class CassieEnv:
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
         self.action_space = gym.spaces.Box(-1. * np.ones(num_actions), 1. * np.ones(num_actions), dtype=np.float32)
+
+        # Used for eval
+        self.test = False
+
+    def eval(self):
+        self.test = True
+
+    def train(self):
+        self.test = False
 
     def close(self):
         if self.vis is not None:
@@ -264,12 +274,13 @@ class CassieEnv:
             self.P = np.random.randint(low=0, high=100, size=10)
             self.D = np.random.randint(low=0, high=10,  size=10)
 
-        # TODO: randomize mass and recalculate weight
-        self.sim.set_body_mass(randomize_mass(self.mass, low=0.9, high=1.1))
-        self.weight = np.sum(self.sim.get_body_mass()) * 9.81
+        if not self.test:
+            # TODO: randomize mass and recalculate weight
+            self.sim.set_body_mass(randomize_mass(self.mass, low=0.9, high=1.1))
+            self.weight = np.sum(self.sim.get_body_mass()) * 9.81
 
-        # TODO: randomize ground friction
-        self.sim.set_geom_friction(randomize_friction(self.friction, low=0.9, high=1.1))
+            # TODO: randomize ground friction
+            self.sim.set_geom_friction(randomize_friction(self.friction, low=0.9, high=1.1))
 
         # TODO: randomize initial height
         self.randomize_init_height()
@@ -463,13 +474,13 @@ class CassieEnv:
         return reward
 
     def compute_cost(self, action, cw=(0.1, 0.1, 0.1)):
-        cost_coeff = 1 - np.exp(-(self.total_steps/1e7) ** 2)
+        cost_coeff = 1 - np.exp(-(self.total_steps / self.training_steps) ** 2) if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
                                                     self.cassie_state.motor.velocity[:10])
 
-        c_power = 1. - np.exp(-max(5e-5, cost_coeff) * power_estimate ** 2)
+        c_power = 1. - np.exp(-min(5e-5, cost_coeff) * power_estimate ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
@@ -477,7 +488,7 @@ class CassieEnv:
 
         # 3. Motor Acceleration Cost
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
-        c_maccel = 1 - np.exp(-max(5e-4, cost_coeff) * np.linalg.norm(motor_accel) ** 2)
+        c_maccel = 1 - np.exp(-min(5e-4, cost_coeff) * np.linalg.norm(motor_accel) ** 2)
 
         # Total Cost
         cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel

@@ -60,9 +60,6 @@ if __name__ == '__main__':
                         help='Ratio for frequency of applying perturbations (default=0)')
     parser.add_argument('--use_phase', action='store_true', default=False,
                         help='Enables phase resets')
-    parser.add_argument('--adaptive_discount', action='store_true', default=False,
-                        help='Activates adaptive discount factor starting from 0.005 to 0.99. '
-                             'If true, discount factor will be overridden (default=False)')
     parser.add_argument('--use_mirror_loss', action='store_true', default=False, dest='mirror_loss',
                         help='Activates mirror loss on actor update. Training will be slow')
     parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
@@ -138,7 +135,7 @@ if __name__ == '__main__':
         args.alr,
         args.clr,
         args.batch,
-        args.discount if not args.adaptive_discount else '(adaptive)',
+        args.discount,
         int(args.training_steps),
         args.eps_steps,
         args.seed,
@@ -155,7 +152,8 @@ if __name__ == '__main__':
                                                            agent_id), flush_secs=60) if args.tensorboard else None
 
     # initialize environment
-    env = envs[args.env][1](simrate=args.simrate,
+    env = envs[args.env][1](training_steps=args.training_steps,
+                            simrate=args.simrate,
                             clock_based=args.clock,
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
@@ -207,8 +205,7 @@ if __name__ == '__main__':
                                             envs[args.env][0],
                                             agent_id) if args.save else None,
                 reset_ratio=args.reset_ratio,
-                use_phase=args.use_phase,
-                adaptive_discount=args.adaptive_discount)
+                use_phase=args.use_phase)
 
     if writer:
         # cleanup
