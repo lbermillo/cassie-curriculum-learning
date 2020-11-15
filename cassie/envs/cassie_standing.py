@@ -15,8 +15,8 @@ from cassie.utils.dynamics_randomization import randomize_mass, randomize_fricti
 
 class CassieEnv:
 
-    def __init__(self, training_steps, simrate=50, clock_based=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8,
+    def __init__(self, simrate=50, clock_based=True,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8, training_steps=1e6,
                  forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.3,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
                  debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
@@ -361,7 +361,7 @@ class CassieEnv:
 
         self.sim.set_qpos(init_height)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.25, 0.25, 0., 0.25)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.2, 0.2, 0.15, 0.2)):
         # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation)
 
         left_foot_pos  = foot_pos[:3]
@@ -415,7 +415,7 @@ class CassieEnv:
         r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        width_thresh = 0.03  # m = 3 cm
+        width_thresh = 0.02  # m = 2 cm
         target_width = 0.18  # m = 18 cm makes the support polygon a square
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
@@ -426,7 +426,7 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.25 * r_feet_align + 0.75 * r_foot_width
+        r_foot_placement = 0. * r_feet_align + 1. * r_foot_width
 
         # 5. Foot/Pelvis Orientation
         fp_orientation_coeff = 15
@@ -460,6 +460,7 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/pose', r_pose, self.total_steps)
             self.writer.add_scalar('env_reward/com_pos', r_com_pos, self.total_steps)
             self.writer.add_scalar('env_reward/com_vel', r_com_vel, self.total_steps)
+            self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
         elif self.writer is None and self.debug:
             print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,

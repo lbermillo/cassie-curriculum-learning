@@ -76,7 +76,7 @@ class Agent:
 
         return state, action, next_state, reward, done
 
-    def update(self, steps, env):
+    def update(self, steps):
         # skip update if the replay buffer is less than the batch size
         if len(self.replay_buffer) < self.batch_size:
             return
@@ -111,6 +111,9 @@ class Agent:
                 self.model.update_target_networks()
 
     def collect(self, env, max_steps, noise=0.1, reset_ratio=0, use_phase=False):
+        # set environment to training mode
+        env.train()
+
         # initialize episode reward tracker for logging
         episode_reward = 0
 
@@ -146,6 +149,10 @@ class Agent:
 
     def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False,
                  reset_ratio=0, use_phase=False):
+        # set environment to eval mode
+        env.eval()
+
+        # initialize reward tracker
         total_rewards = 0.
 
         # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
@@ -182,8 +189,6 @@ class Agent:
         best_score = 0.0
 
         while self.total_steps < training_steps:
-            # set environment to training mode
-            env.train()
 
             # collect experiences
             episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise, reset_ratio=reset_ratio, use_phase=use_phase)
@@ -193,13 +198,10 @@ class Agent:
                 self.writer.add_scalar('reward/train', episode_reward, episode)
 
             # update all networks after an episode
-            self.update(episode_steps, env)
+            self.update(episode_steps)
 
             # evaluate current policy
             if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
-
-                # set environment to eval mode
-                env.eval()
 
                 # get evaluation score
                 score = self.evaluate(env, render=False)
