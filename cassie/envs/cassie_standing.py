@@ -461,7 +461,7 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/com_pos', r_com_pos, self.total_steps)
             self.writer.add_scalar('env_reward/com_vel', r_com_vel, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
-        elif self.debug:
+        elif self.writer is None and self.debug:
             print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
                                                                                                                   r_pose,
                                                                                                                   r_com_pos,
@@ -502,7 +502,7 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/action_change', c_action, self.total_steps)
             self.writer.add_scalar('env_cost/motor_accel', c_maccel, self.total_steps)
             self.writer.add_scalar('env_cost/power', c_power, self.total_steps)
-        elif self.debug:
+        elif self.writer is None and self.debug:
             print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}]\n'.format(
                 c_action, c_maccel, c_power))
 
