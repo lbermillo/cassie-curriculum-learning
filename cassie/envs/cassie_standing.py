@@ -16,7 +16,7 @@ from cassie.utils.dynamics_randomization import randomize_mass, randomize_fricti
 class CassieEnv:
 
     def __init__(self, simrate=50, clock_based=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8, training_steps=1e6,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8, training_steps=1e6, learn_command=False,
                  forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.3,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
                  debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
@@ -44,6 +44,7 @@ class CassieEnv:
         self.power_threshold = power_threshold
         self.reduced_input = reduced_input
         self.learn_PD = learn_PD
+        self.learn_command = learn_command
         self.debug = debug
         self.writer = writer
 
@@ -191,7 +192,7 @@ class CassieEnv:
                                   0])
 
         # random changes to target yaw of the pelvis
-        if np.random.rand() < 0.1:
+        if np.random.rand() < 0.1 and self.learn_command:
             self.target_orientation[2] += np.random.uniform(-self.max_orient, self.max_orient)
 
         # simulating delays
@@ -265,9 +266,12 @@ class CassieEnv:
 
         # reset target variables
         self.target_orientation = np.zeros(3)
-        self.target_speed[0] = random.randint(int(self.min_speed[0] * 10), int(self.max_speed[0] * 10)) / 10.
-        self.target_speed[1] = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
-        self.target_speed[2] = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
+        if self.learn_command:
+            self.target_speed[0] = random.randint(int(self.min_speed[0] * 10), int(self.max_speed[0] * 10)) / 10.
+            self.target_speed[1] = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
+            self.target_speed[2] = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
+        else:
+            self.target_speed = np.zeros(3)
 
         # TODO: learn_PD
         if self.learn_PD:
@@ -282,8 +286,10 @@ class CassieEnv:
             # TODO: randomize ground friction
             self.sim.set_geom_friction(randomize_friction(self.friction, low=0.9, high=1.1))
 
-        # TODO: randomize initial height
-        self.randomize_init_height()
+        # only randomize init height for standing (commanded velocities are all zero)
+        if np.sum(self.target_speed) == 0 and np.sum(self.target_orientation) == 0:
+            # TODO: randomize initial height
+            self.randomize_init_height()
 
         # TODO: joint noise error
         self.motor_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=10)
@@ -330,13 +336,6 @@ class CassieEnv:
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
     def randomize_init_height(self):
-        low_start = [0.02477726, -0.01568609, 0.61515595, 0.99910102, -0.03834618, -0.01492016,
-                     -0.01020324, 0.10320576, -0.01822352, 0.78221161, 0.77875311, -0.00615072,
-                     0.07485685, -0.62281796, -2.10276909, -0.06401924, 2.5159155, -0.06195463,
-                     -1.93171504, 1.91307376, -2.03487245, 0.1189546, 0.03197041, 0.75972677,
-                     0.79644527, -0.002866, -0.06312636, -0.60139985, -2.03505813, -0.07590401,
-                     2.47309159, -0.06861883, -1.92336564, 1.90473564, -2.02667971]
-
         mid_start = [-2.83004740e-03, -2.29114732e-02, 7.07065845e-01, 9.99894779e-01,
                      1.10562740e-02, -6.12652366e-03, 7.11723211e-03, 1.50099449e-02,
                      1.64266778e-02, 8.24133043e-01, 8.37481179e-01, -9.69445402e-03,
@@ -357,11 +356,11 @@ class CassieEnv:
                       -1.15727612e+00, -1.67963434e-02, 1.43236886e+00, -2.01196652e-02,
                       -1.48618073e+00, 1.46805721e+00, -1.59446755e+00]
 
-        init_height = random.choice([low_start, mid_start, high_start])
+        init_height = random.choice([mid_start, high_start])
 
         self.sim.set_qpos(init_height)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.2, 0.2, 0.15, 0.2)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.15, 0.25, 0.15, 0.2)):
         # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation)
 
         left_foot_pos  = foot_pos[:3]
@@ -370,8 +369,8 @@ class CassieEnv:
         # midfoot position
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
-        # TODO: 1. Pelvis Orientation
-        pelvis_orient_coeff = 10
+        # 1. Pelvis Orientation (Commanded Yaw)
+        pelvis_orient_coeff = 50
 
         # convert quaternion values to euler [roll, pitch, yaw]
         pelvis_orient = quaternion2euler(qpos[3:7])
@@ -398,9 +397,9 @@ class CassieEnv:
         else:
             z_com_pos = 1.
 
-        r_com_pos = 0.8 * xy_com_pos + 0.2 * z_com_pos
+        r_com_pos = 0.6 * xy_com_pos + 0.4 * z_com_pos
 
-        # 3. CoM Velocity Modulation
+        # 3. CoM Velocity Modulation (Commanded XY)
         com_vel_coeff = 50
 
         xy_target_vel = np.exp(-com_vel_coeff * np.linalg.norm(qvel[:2] - self.target_speed[:2]) ** 2)
@@ -429,7 +428,7 @@ class CassieEnv:
         r_foot_placement = 0. * r_feet_align + 1. * r_foot_width
 
         # 5. Foot/Pelvis Orientation
-        fp_orientation_coeff = 15
+        fp_orientation_coeff = 50
         foot_yaw = np.array([qpos[8], qpos[22]])
         left_foot_orient  = np.exp(-fp_orientation_coeff * (foot_yaw[0] - pelvis_orient[2]) ** 2)
         right_foot_orient = np.exp(-fp_orientation_coeff * (foot_yaw[1] - pelvis_orient[2]) ** 2)
@@ -475,13 +474,13 @@ class CassieEnv:
         return reward
 
     def compute_cost(self, action, cw=(0.1, 0.1, 0.1)):
-        cost_coeff = 1 - np.exp(-(self.total_steps / self.training_steps) ** 2) if not self.test else 1.
+        cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
                                                     self.cassie_state.motor.velocity[:10])
 
-        c_power = 1. - np.exp(-min(5e-5, cost_coeff) * power_estimate ** 2)
+        c_power = 1. - np.exp(-min(1e-5, cost_coeff) * power_estimate ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)

@@ -35,6 +35,8 @@ if __name__ == '__main__':
                         help='min speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
                         help='max speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_orient', type=float, default=0.,
+                        help='max orientation change in radians (default: 0)')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
@@ -64,6 +66,9 @@ if __name__ == '__main__':
                         help='Activates mirror loss on actor update. Training will be slow')
     parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
                         help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
+    parser.add_argument('--learn_command', action='store_true', default=False, dest='learn_command',
+                        help='Randomizes commanded targets for speed and orientation if '
+                             'and orientation parameters are set')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -127,21 +132,20 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}LRNPD{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}XSPD{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}PD{}CMD{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}]_Training[TS{}ES{}S{}RST{}XSPD{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
         args.learn_PD,
+        args.learn_command,
         args.algo.upper(),
         args.alr,
         args.clr,
         args.batch,
-        args.discount,
         int(args.training_steps),
         args.eps_steps,
         args.seed,
         args.reset_ratio,
         [args.min_speed[0], args.max_speed[0]],
-        args.fall_threshold,
         args.clock,
         args.reduced_input,
         args.tag)
@@ -165,6 +169,7 @@ if __name__ == '__main__':
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             learn_PD=args.learn_PD,
+                            learn_command=args.learn_command,
                             debug=args.debug,
                             config=args.config,
                             writer=writer, )
