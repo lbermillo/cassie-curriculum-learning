@@ -195,9 +195,8 @@ class CassieEnv:
         if np.random.rand() < 0.1 and self.learn_command:
             self.target_orientation[2] += np.random.uniform(-self.max_orient, self.max_orient)
 
-        # TODO: simulating delays
-        # simrate = self.simrate + np.random.randint(-10, 10)
-        simrate = self.simrate
+        # simulating delays
+        simrate = self.simrate + np.random.randint(-5, 5) if not self.test else self.simrate
 
         # reset mujoco tracking variables
         foot_pos = np.zeros(6)
