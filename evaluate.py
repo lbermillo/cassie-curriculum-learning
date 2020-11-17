@@ -40,6 +40,9 @@ if __name__ == "__main__":
                         help='Trains with inputs that are directly measured only (default: False)')
     parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
                         help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
+    parser.add_argument('--learn_command', action='store_true', default=False, dest='learn_command',
+                        help='Randomizes commanded targets for speed and orientation if '
+                             'and orientation parameters are set')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
 
@@ -81,6 +84,7 @@ if __name__ == "__main__":
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
                             learn_PD=args.learn_PD,
+                            learn_command=args.learn_command,
                             config=args.config,
                             debug=args.debug)
 

@@ -195,9 +195,9 @@ class CassieEnv:
         if np.random.rand() < 0.1 and self.learn_command:
             self.target_orientation[2] += np.random.uniform(-self.max_orient, self.max_orient)
 
-        # simulating delays
-        simrate = self.simrate + np.random.randint(-10, 10)
-        # simrate = self.simrate
+        # TODO: simulating delays
+        # simrate = self.simrate + np.random.randint(-10, 10)
+        simrate = self.simrate
 
         # reset mujoco tracking variables
         foot_pos = np.zeros(6)
@@ -370,7 +370,7 @@ class CassieEnv:
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
         # 1. Pelvis Orientation (Commanded Yaw)
-        pelvis_orient_coeff = 50
+        pelvis_orient_coeff = 100
 
         # convert quaternion values to euler [roll, pitch, yaw]
         pelvis_orient = quaternion2euler(qpos[3:7])
@@ -378,7 +378,7 @@ class CassieEnv:
         r_pose = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient - self.target_orientation) ** 2)
 
         # 2. CoM Position Modulation
-        xy_com_pos_coeff = 25
+        xy_com_pos_coeff = 100
         z_com_pos_coeff = 10
 
         # 2a. Horizontal Position Component (target position is the center of the support polygon)
@@ -408,27 +408,19 @@ class CassieEnv:
         r_com_vel = 0.8 * xy_target_vel + 0.2 * z_target_vel
 
         # 4. Foot Placement
-        foot_placement_coeff = 50
+        foot_placement_coeff = 1e3
 
         # 4a. Foot Alignment
         r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
 
         # 4b. Feet Width
-        width_thresh = 0.02  # m = 2 cm
         target_width = 0.18  # m = 18 cm makes the support polygon a square
-        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
+        r_foot_width = np.exp(-foot_placement_coeff * (np.linalg.norm([foot_pos[1], foot_pos[4]]) - target_width) ** 2)
 
-        if feet_width < target_width - width_thresh:
-            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width - width_thresh)) ** 2)
-        elif feet_width > target_width + width_thresh:
-            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width + width_thresh)) ** 2)
-        else:
-            r_foot_width = 1.
-
-        r_foot_placement = 0. * r_feet_align + 1. * r_foot_width
+        r_foot_placement = 0.2 * r_feet_align + 0.8 * r_foot_width if np.sum(self.target_speed) == 0 else r_foot_width
 
         # 5. Foot/Pelvis Orientation
-        fp_orientation_coeff = 50
+        fp_orientation_coeff = 100
         foot_yaw = np.array([qpos[8], qpos[22]])
         left_foot_orient  = np.exp(-fp_orientation_coeff * (foot_yaw[0] - pelvis_orient[2]) ** 2)
         right_foot_orient = np.exp(-fp_orientation_coeff * (foot_yaw[1] - pelvis_orient[2]) ** 2)
