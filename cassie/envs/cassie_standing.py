@@ -16,8 +16,8 @@ from cassie.utils.dynamics_randomization import randomize_mass, randomize_fricti
 class CassieEnv:
 
     def __init__(self, simrate=50, clock_based=True,
-                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.8, training_steps=1e6, learn_command=False,
-                 forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.3,
+                 reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, training_steps=1e6, learn_command=False,
+                 forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.6,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
                  debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
@@ -240,14 +240,15 @@ class CassieEnv:
         state = self.get_full_state()
 
         # Early termination condition
-        height_in_bounds = self.min_height < self.sim.qpos()[2] < self.max_height
+        alive_bounds     = self.min_height     < self.sim.qpos()[2] < self.max_height
+        height_in_bounds = self.fall_threshold < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action) if height_in_bounds \
-            else self.compute_cost(action)
+            else -self.compute_cost(action, cw=(0.3, 0.35, 0.35))
 
         # Done Condition
-        done = True if not height_in_bounds or reward < self.reward_cutoff else False
+        done = not alive_bounds or reward < self.reward_cutoff
 
         # Update timestep counter
         self.timestep += 1
@@ -285,14 +286,18 @@ class CassieEnv:
             # TODO: randomize ground friction
             self.sim.set_geom_friction(randomize_friction(self.friction, low=0.9, high=1.1))
 
+            # TODO: joint noise error
+            self.motor_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=10)
+            self.joint_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=6)
+
+        else:
+            self.motor_encoder_noise = np.zeros(10)
+            self.joint_encoder_noise = np.zeros(6)
+
         # only randomize init height for standing (commanded velocities are all zero)
         if np.sum(self.target_speed) == 0 and np.sum(self.target_orientation) == 0:
             # TODO: randomize initial height
             self.randomize_init_height()
-
-        # TODO: joint noise error
-        self.motor_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=10)
-        self.joint_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=6)
 
         # reset with perturbations and/or from a different stance (use_phase=True)
         if np.random.rand() < reset_ratio:
@@ -387,14 +392,7 @@ class CassieEnv:
         xy_com_pos = np.exp(-xy_com_pos_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
 
         # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        height_thresh = 0.1  # 10 cm
-
-        if qpos[2] < self.target_height - height_thresh:
-            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (self.target_height - height_thresh)) ** 2)
-        elif qpos[2] > self.target_height + height_thresh:
-            z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - (self.target_height + height_thresh)) ** 2)
-        else:
-            z_com_pos = 1.
+        z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - self.target_height) ** 2)
 
         r_com_pos = 0.6 * xy_com_pos + 0.4 * z_com_pos
 

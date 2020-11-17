@@ -11,7 +11,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Agent:
     def __init__(self, algorithm, state_dim, action_dim, max_action, hidden_dim=(256, 256), actor_lr=3e-4, critic_lr=3e-4,
-                 discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4, use_mirror_loss=True,
+                 discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.1, random_action_steps=1e4, use_mirror_loss=True,
                  capacity=1e6, batch_size=100, policy_update_freq=2, termination_curriculum=None, chkpt_pth=None,
                  init_weights=True, writer=None):
 

@@ -107,8 +107,8 @@ if __name__ == '__main__':
                         help='Policy update frequency (default=2)')
     parser.add_argument('--policy_noise', type=float, default=0.35,
                         help='Noise added to target networks during critic update (default=0.35)')
-    parser.add_argument('--noise_clip', type=float, default=0.5,
-                        help='Noise clipping for target action regularization (default=0.5)')
+    parser.add_argument('--noise_clip', type=float, default=0.1,
+                        help='Noise clipping for target action regularization (default=0.1)')
 
     # SAC Specific Parameters
     parser.add_argument('--alpha', type=float, default=0.2,
