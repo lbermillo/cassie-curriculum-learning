@@ -26,6 +26,7 @@ class Actor(nn.Module):
         )
         self.l3 = nn.Sequential(
             nn.Linear(hidden_layer[1], action_dim),
+            nn.Tanh()
         )
 
         if init_weights:
