@@ -184,12 +184,22 @@ class CassieEnv:
     def step(self, action):
 
         if self.timestep % self.force_fq == 0:
-            # Apply perturbations to the pelvis
-            self.sim.apply_force([random.choice([-self.forces[0], self.forces[0]]),
-                                  random.choice([-self.forces[1], self.forces[1]]),
-                                  random.choice([-self.forces[2], self.forces[2]]),
-                                  0,
-                                  0])
+            if np.sum(self.target_speed) == 0:
+                # Apply perturbations to the pelvis in random directions
+                self.sim.apply_force([random.choice([-self.forces[0], self.forces[0]]),
+                                      random.choice([-self.forces[1], self.forces[1]]),
+                                      random.choice([-self.forces[2], self.forces[2]]),
+                                      0,
+                                      0])
+            else:
+                force_dir = np.sign(self.target_speed)
+
+                # Apply perturbations to the pelvis in the direction of the pelvis
+                self.sim.apply_force([force_dir[0] * self.forces[0],
+                                      force_dir[1] * self.forces[1],
+                                      force_dir[2] * self.forces[2],
+                                      0,
+                                      0])
 
         # random changes to target yaw of the pelvis
         if np.random.rand() < 0.1 and self.learn_command:
@@ -379,30 +389,30 @@ class CassieEnv:
         # convert quaternion values to euler [roll, pitch, yaw]
         pelvis_orient = quaternion2euler(qpos[3:7])
 
-        r_pose = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient - self.target_orientation) ** 2)
+        r_com_roll  = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[0] - self.target_orientation[0]) ** 2)
+        r_com_pitch = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[1] - self.target_orientation[1]) ** 2)
+        r_com_yaw   = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[2] - self.target_orientation[2]) ** 2)
+
+        r_pose = 0.5 * r_com_yaw + 0.4 * r_com_roll + 0.1 * r_com_pitch
 
         # 2. CoM Position Modulation
-        xy_com_pos_coeff = 100
-        z_com_pos_coeff = 10
+        com_pos_coeff = 50
 
-        # 2a. Horizontal Position Component (target position is the center of the support polygon)
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
 
-        xy_com_pos = np.exp(-xy_com_pos_coeff * np.linalg.norm(qpos[:2] - xy_target_pos) ** 2)
+        x_com_pos = np.exp(-com_pos_coeff * np.linalg.norm(qpos[0] - xy_target_pos[0]) ** 2)
+        y_com_pos = np.exp(-com_pos_coeff * np.linalg.norm(qpos[1] - xy_target_pos[1]) ** 2)
+        z_com_pos = np.exp(-10 * (qpos[2] - self.target_height) ** 2)
 
-        # 2b. Vertical Position Component (robot should stand upright and maintain a certain height)
-        z_com_pos = np.exp(-z_com_pos_coeff * (qpos[2] - self.target_height) ** 2)
-
-        r_com_pos = 0.6 * xy_com_pos + 0.4 * z_com_pos
+        r_com_pos = 0.6 * y_com_pos + 0.3 * z_com_pos + 0.1 * x_com_pos
 
         # 3. CoM Velocity Modulation (Commanded XY)
-        com_vel_coeff = 50
+        x_target_vel = np.exp(-100 * np.linalg.norm(qvel[0] - self.target_speed[0]) ** 2)
+        y_target_vel = np.exp(-50 * np.linalg.norm(qvel[1] - self.target_speed[1]) ** 2)
+        z_target_vel = np.exp(-25 * np.linalg.norm(qvel[2] - self.target_speed[2]) ** 2)
 
-        xy_target_vel = np.exp(-com_vel_coeff * np.linalg.norm(qvel[:2] - self.target_speed[:2]) ** 2)
-        z_target_vel  = np.exp(-com_vel_coeff * np.linalg.norm(qvel[2]  - self.target_speed[2] ) ** 2)
-
-        r_com_vel = 0.8 * xy_target_vel + 0.2 * z_target_vel
+        r_com_vel = 0.75 * x_target_vel + 0.2 * y_target_vel + 0.05 * z_target_vel
 
         # 4. Foot Placement
         foot_placement_coeff = 1e3
@@ -412,7 +422,15 @@ class CassieEnv:
 
         # 4b. Feet Width
         target_width = 0.18  # m = 18 cm makes the support polygon a square
-        r_foot_width = np.exp(-foot_placement_coeff * (np.linalg.norm([foot_pos[1], foot_pos[4]]) - target_width) ** 2)
+        width_thresh = 0.02  # m = 2 cm
+        feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
+
+        if feet_width < target_width - width_thresh:
+            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width - width_thresh)) ** 2)
+        elif feet_width > target_width + width_thresh:
+            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width + width_thresh)) ** 2)
+        else:
+            r_foot_width = 1.
 
         r_foot_placement = 0.2 * r_feet_align + 0.8 * r_foot_width if np.sum(self.target_speed) == 0 else r_foot_width
 
