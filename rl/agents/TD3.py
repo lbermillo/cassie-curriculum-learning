@@ -147,7 +147,7 @@ class Agent:
 
         return step, episode_reward
 
-    def evaluate(self, env, eval_eps=10, max_steps=1e3, render=False, dt=0.033, speedup=1, print_stats=False,
+    def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False,
                  reset_ratio=0, use_phase=False):
         # set environment to eval mode
         env.eval()
@@ -204,7 +204,7 @@ class Agent:
             if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
 
                 # get evaluation score
-                score = self.evaluate(env, render=False)
+                score = self.evaluate(env, render=False, max_steps=max_steps)
 
                 # update reward termination
                 if self.tc is not None:
