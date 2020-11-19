@@ -3,6 +3,7 @@
 import sys
 import time
 import torch
+import atexit
 import pickle
 import argparse
 import platform
@@ -15,7 +16,20 @@ from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
+
+def log(filename, times, states, inputs, outputs, targets, sto="final"):
+    data = {"time": times, "state": states, "input": inputs, "output": outputs, "target": targets}
+
+    filep = open(filename + "_log" + str(sto) + ".pkl", "wb")
+
+    pickle.dump(data, filep)
+
+    filep.close()
+
+
 parser = argparse.ArgumentParser(description='Cassie Sim Controller')
+parser.add_argument('--filename', '-f', action='store', default=None, required=True,
+                    help='Provide filename for logs (default=None)')
 parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
                     help='Provide path to existing model to load it (default=None)')
 parser.add_argument('--simrate', type=int, default=60,
@@ -26,27 +40,37 @@ parser.add_argument('--no_clock', action='store_false', default=True, dest='cloc
                         help='Disables clock')
 parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
+parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
+                        help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
 
 args = parser.parse_args()
-
-# Prevent latency issues by disabling multithreading in pytorch
-torch.set_num_threads(1)
 
 # Prepare model
 env = cassie_standing.CassieEnv(simrate=args.simrate,
                                 reduced_input=args.reduced_input,
-                                clock_based=args.clock)
+                                clock_based=args.clock,
+                                learn_PD=args.learn_PD,)
 
 state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
-# TODO: create args from terminal for policy parameters
-checkpoint = torch.load(args.load)
+# load policy
+checkpoint = torch.load(args.load, map_location=torch.device('cpu'))
 
 policy = Actor(state_dim, action_dim, max_action, args.hidden)
 policy.load_state_dict(checkpoint['actor'])
 policy.eval()
+
+# Initialize logging variables
+time_log   = [] # time stamp
+state_log  = [] # cassie_state
+input_log  = [] # network inputs
+output_log = [] # network outputs
+target_log = [] #PD target log
+
+# run log function when closing the application
+atexit.register(log, args.filename, time_log, state_log, input_log, output_log, target_log)
 
 # Initialize control structure with gains
 P = np.array([100, 100, 88, 96, 50, 100, 100, 88, 96, 50])
@@ -68,7 +92,6 @@ if platform.node() == 'cassie':
                        local_addr='10.10.10.100', local_port='25011')
 else:
     cassie = CassieUdp() # local testing
-
 
 # Connect to the simulator or robot
 print('Connecting...')
@@ -120,6 +143,18 @@ while True:
         # Reset orientation on STO
         if state.radio.channel[8] < 0:
             orient_add = quaternion2euler(state.pelvis.orientation[:])[2]
+
+            # Save log files after STO toggle (skipping first STO)
+            if sto is False:
+                log(args.filename, time_log, state_log, input_log, output_log, target_log, sto=str(sto_count))
+                sto_count += 1
+                sto = True
+                # Clear out logs
+                time_log = []  # time stamp
+                state_log = []
+                input_log = []  # network inputs
+                output_log = []  # network outputs
+                target_log = []  # PD target log
         else:
             sto = False
 
@@ -186,8 +221,8 @@ while True:
                 state.motor.velocity[:],
 
                 # Foot States
-                # state.leftFoot.position[:],
-                # state.rightFoot.position[:],
+                state.leftFoot.position[:],
+                state.rightFoot.position[:],
 
             ])
         else:
@@ -216,14 +251,30 @@ while True:
 
         # select action according to actor's current policy
         action = policy(torch_state).cpu().data.numpy().flatten()
+        if args.learn_PD:
+            action, P, D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
         target = action + offset
 
         # Send action
         for i in range(5):
+            u.leftLeg.motorPd.pGain[i] = P[i]
+            u.leftLeg.motorPd.dGain[i] = D[i]
+
+            u.rightLeg.motorPd.pGain[i] = P[i + 5]
+            u.rightLeg.motorPd.dGain[i] = D[i + 5]
+
             u.leftLeg.motorPd.pTarget[i] = target[i]
             u.rightLeg.motorPd.pTarget[i] = target[i + 5]
 
         cassie.send_pd(u)
+
+        # Logging
+        if not sto:
+            time_log.append(time.time())
+            state_log.append(state)
+            input_log.append(RL_state)
+            output_log.append(action)
+            target_log.append(target)
 
         # Measure delay
         print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))

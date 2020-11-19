@@ -14,12 +14,10 @@ if __name__ == '__main__':
     # Environment parameters
     parser.add_argument('--env', '-e', type=int, default=0, dest='env',
                         help='Cassie environment: [0] Standing, [1] Walking [2] Jumping(default: Standing)')
-    parser.add_argument('--simrate', type=int, default=60,
-                        help='Simulation rate in Hz (default: 60)')
+    parser.add_argument('--simrate', type=int, default=50,
+                        help='Simulation rate in Hz (default: 50)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock')
-    parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
-                        help='Disables state estimator')
     parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.5], dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold. '
                              'Enter two values [initial, final] cutoff to activate termination curriculum '
@@ -30,11 +28,14 @@ if __name__ == '__main__':
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
     parser.add_argument('--force_fq', type=int, default=100,
                         help='Timestep frequency of forces applied to the pelvis (default: 100)')
-    parser.add_argument('--fall_threshold', type=float, default=0.2,
-                        help='Height in meters that the environment considers falling when it goes below the difference'
-                             'between the target height and fall threshold (default: 0.7)')
-    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
-                        help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--fall_threshold', type=float, default=0.6,
+                        help='Height in meters that the environment considers falling (default: 0.6)')
+    parser.add_argument('--min_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='min speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='max speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_orient', type=float, default=0.,
+                        help='max orientation change in radians (default: 0)')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
@@ -56,11 +57,17 @@ if __name__ == '__main__':
                         help='Creates a seed to the specified value (default: None)')
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
-    parser.add_argument('--reset_ratio', type=float, default=0.7,
-                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0.7)')
-    parser.add_argument('--adaptive_discount', action='store_true', default=False,
-                        help='Activates adaptive discount factor starting from 0.005 to 0.99. '
-                             'If true, discount factor will be overridden (default=False)')
+    parser.add_argument('--reset_ratio', type=float, default=0,
+                        help='Ratio for frequency of applying perturbations (default=0)')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Enables phase resets')
+    parser.add_argument('--use_mirror_loss', action='store_true', default=False, dest='mirror_loss',
+                        help='Activates mirror loss on actor update. Training will be slow')
+    parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
+                        help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
+    parser.add_argument('--learn_command', action='store_true', default=False, dest='learn_command',
+                        help='Randomizes commanded targets for speed and orientation if '
+                             'and orientation parameters are set')
 
     # File and Logging parameters
     parser.add_argument('--save', '-s', action='store_true', default=False, dest='save',
@@ -75,30 +82,32 @@ if __name__ == '__main__':
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
                         help='Name of algorithm to use [TD3, SAC] (default: TD3)')
-    parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
     parser.add_argument('--alr', type=float, default=5e-5,
-                        help='Actor learning rate(s) (default=5e-5)')
+                        help='Actor learning rate (default=5e-5)')
     parser.add_argument('--clr', type=float, default=8e-5,
-                        help='Critic learning rate(s) (default=[8e-5])')
+                        help='Critic learning rate (default=8e-5)')
     parser.add_argument('--buffer', type=float, default=1e6,
                         help='Replay buffer size (default=1e6)')
     parser.add_argument('--batch', type=int, default=1024,
                         help='Batch size (default=1024)')
     parser.add_argument('--tau', '-t', type=float, default=1e-3,
                         help='Target network update rate (default=1e-3)')
-    parser.add_argument('--discount', type=float, default=0.99,
-                        help='Discount factor (default=0.99)')
+    parser.add_argument('--discount', type=float, default=0.97,
+                        help='Discount factor (default=0.97)')
     parser.add_argument('--start_steps', type=int, default=10000,
                         help='Steps sampling random actions (default: 10000)')
-    parser.add_argument('--network_init', action='store_true', default=False,
-                        help='Enables network initialization')
+    parser.add_argument('--no_network_init', action='store_false', default=True, dest='network_init',
+                        help='Disables network initialization')
 
     # TD3 Specific Parameters
     parser.add_argument('--update_fq', type=int, default=2, dest='update_fq',
                         help='Policy update frequency (default=2)')
     parser.add_argument('--policy_noise', type=float, default=0.35,
                         help='Noise added to target networks during critic update (default=0.35)')
+    parser.add_argument('--noise_clip', type=float, default=0.1,
+                        help='Noise clipping for target action regularization (default=0.1)')
 
     # SAC Specific Parameters
     parser.add_argument('--alpha', type=float, default=0.2,
@@ -122,22 +131,20 @@ if __name__ == '__main__':
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
-    agent_id = '{}[RC{}TW{}]_{}[ALR{}CLR{}BATCH{}GAMMA{}]_Training[TS{}ES{}S{}RST{}SPD{}PWR{}FH{}CLK{}RI{}]{}'.format(
+    agent_id = '{}[RC{}PD{}CMD{}]_{}[ALR{:1.0e}CLR{:1.0e}BATCH{}]_Training[TS{}ES{}S{}RST{}XSPD{}CLK{}RI{}]{}'.format(
         envs[args.env][0],
         args.rcut,
-        args.tw,
+        args.learn_PD,
+        args.learn_command,
         args.algo.upper(),
         args.alr,
         args.clr,
         args.batch,
-        args.discount if not args.adaptive_discount else '(adaptive)',
         int(args.training_steps),
         args.eps_steps,
         args.seed,
         args.reset_ratio,
-        args.speed,
-        args.power_threshold,
-        args.fall_threshold,
+        [args.min_speed[0], args.max_speed[0]],
         args.clock,
         args.reduced_input,
         args.tag)
@@ -148,18 +155,20 @@ if __name__ == '__main__':
                                                            agent_id), flush_secs=60) if args.tensorboard else None
 
     # initialize environment
-    env = envs[args.env][1](simrate=args.simrate,
+    env = envs[args.env][1](training_steps=args.training_steps,
+                            simrate=args.simrate,
                             clock_based=args.clock,
-                            state_est=args.state_est,
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             fall_threshold=args.fall_threshold,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            min_speed=args.speed[0],
-                            max_speed=args.speed[1],
+                            min_speed=args.min_speed,
+                            max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
+                            learn_PD=args.learn_PD,
+                            learn_command=args.learn_command,
                             debug=args.debug,
                             config=args.config,
                             writer=writer, )
@@ -179,7 +188,9 @@ if __name__ == '__main__':
                       discount=args.discount,
                       tau=args.tau,
                       policy_noise=args.policy_noise,
+                      noise_clip=args.noise_clip,
                       random_action_steps=args.start_steps,
+                      use_mirror_loss=args.mirror_loss,
                       capacity=args.buffer,
                       batch_size=args.batch,
                       policy_update_freq=args.update_fq,
@@ -198,7 +209,7 @@ if __name__ == '__main__':
                                             envs[args.env][0],
                                             agent_id) if args.save else None,
                 reset_ratio=args.reset_ratio,
-                adaptive_discount=args.adaptive_discount)
+                use_phase=args.use_phase)
 
     if writer:
         # cleanup

@@ -19,8 +19,6 @@ if __name__ == "__main__":
                         help='Simulation rate in Hz (default: 60)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock and uses reference trajectories')
-    parser.add_argument('--no_state_est', action='store_false', default=True, dest='state_est',
-                        help='Disables state estimator')
     parser.add_argument('--rcut', '-r', type=float, default=0.3, dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold (default: 0.3)')
     parser.add_argument('--tw', type=float, default=1.,
@@ -29,8 +27,10 @@ if __name__ == "__main__":
                         help='Forces applied to the pelvis i.e. [x, y, z] (default: (0, 0, 0) )')
     parser.add_argument('--force_fq', type=int, default=10,
                         help='Frequency forces applied to the pelvis (default: 10 timesteps)')
-    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
-                        help='Min and max speeds in m/s (default: [0, 1])')
+    parser.add_argument('--min_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='min speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
+                        help='max speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--power_threshold', type=int, default=150,
                         help='Power threshold to train on. Measured in Watts (default: 150)')
     parser.add_argument('--config', action='store', default="cassie/cassiemujoco/cassie.xml",
@@ -38,6 +38,11 @@ if __name__ == "__main__":
                              'cassie/cassiemujoco/cassie.xml )')
     parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
+    parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
+                        help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
+    parser.add_argument('--learn_command', action='store_true', default=False, dest='learn_command',
+                        help='Randomizes commanded targets for speed and orientation if '
+                             'and orientation parameters are set')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='Activates reward debug (default: False)')
 
@@ -51,7 +56,9 @@ if __name__ == "__main__":
     parser.add_argument('--print_stats', action='store_false', default=True,
                         help='Prints episode rewards (default: True)')
     parser.add_argument('--reset_ratio', type=float, default=0,
-                        help='Ratio for phase and full reset. Value closer to one does more phase resets (default=0)')
+                        help='Ratio for frequency of applying perturbations (default=0)')
+    parser.add_argument('--use_phase', action='store_true', default=False,
+                        help='Enables phase resets')
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
@@ -68,15 +75,16 @@ if __name__ == "__main__":
 
     env = envs[args.env][1](simrate=args.simrate,
                             clock_based=args.clock,
-                            state_est=args.state_est,
                             reward_cutoff=args.rcut,
                             target_action_weight=args.tw,
                             forces=args.forces,
                             force_fq=args.force_fq,
-                            min_speed=args.speed[0],
-                            max_speed=args.speed[1],
+                            min_speed=args.min_speed,
+                            max_speed=args.max_speed,
                             power_threshold=args.power_threshold,
                             reduced_input=args.reduced_input,
+                            learn_PD=args.learn_PD,
+                            learn_command=args.learn_command,
                             config=args.config,
                             debug=args.debug)
 
@@ -96,4 +104,5 @@ if __name__ == "__main__":
                    max_steps=args.eval_steps,
                    render=args.render,
                    print_stats=args.print_stats,
-                   reset_ratio=args.reset_ratio, )
+                   reset_ratio=args.reset_ratio,
+                   use_phase=args.use_phase, )

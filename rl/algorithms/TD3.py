@@ -1,6 +1,7 @@
 # Implementation based on Twin Delayed Deep Deterministic Policy Gradients (TD3)
 # Paper: https://arxiv.org/abs/1802.09477
 import os
+import numpy as np
 from copy import deepcopy
 
 import torch
@@ -77,12 +78,12 @@ class TD3:
         # return critic loss for logging
         return critic_loss
 
-    def update_actor(self, state):
+    def update_actor(self, state, reg_coeff=1e-4):
         # compute q using policy
         q1, _ = self.critic(state, self.actor(state))
 
         # compute actor loss
-        actor_loss = -q1.mean()
+        actor_loss = -q1.mean() # + reg_coeff * torch.norm(self.actor(state)) ** 2
 
         # optimize actor
         self.actor_optimizer.zero_grad()
@@ -127,9 +128,9 @@ class TD3:
         self.critic.load_state_dict(checkpoint['critic'])
 
         # load actor/critic traget state dicts
-        # self.actor_target.load_state_dict(checkpoint['actor_target'])
-        # self.critic_target.load_state_dict(checkpoint['critic_target'])
+        self.actor_target.load_state_dict(checkpoint['actor_target'])
+        self.critic_target.load_state_dict(checkpoint['critic_target'])
 
         # load actor/critic optimizer state dicts
-        # self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
-        # self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer'])
