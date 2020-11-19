@@ -13,14 +13,30 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
 
         # Q1 architecture
-        self.l1 = nn.Sequential(nn.Linear(state_dim + action_dim, hidden_dim[0]), nn.ReLU())
-        self.l2 = nn.Sequential(nn.Linear(hidden_dim[0], hidden_dim[1]), nn.ReLU())
-        self.l3 = nn.Sequential(nn.Linear(hidden_dim[1], 1), )
+        self.l1 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim[0]),
+            nn.Tanh()
+        )
+        self.l2 = nn.Sequential(
+            nn.Linear(hidden_dim[0], hidden_dim[1]),
+            nn.Tanh()
+        )
+        self.l3 = nn.Sequential(
+            nn.Linear(hidden_dim[1], 1),
+        )
 
         # Q2 architecture
-        self.l4 = nn.Sequential(nn.Linear(state_dim + action_dim, hidden_dim[0]), nn.ReLU())
-        self.l5 = nn.Sequential(nn.Linear(hidden_dim[0], hidden_dim[1]), nn.ReLU())
-        self.l6 = nn.Sequential(nn.Linear(hidden_dim[1], 1), )
+        self.l4 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim[0]),
+            nn.Tanh()
+        )
+        self.l5 = nn.Sequential(
+            nn.Linear(hidden_dim[0], hidden_dim[1]),
+            nn.Tanh()
+        )
+        self.l6 = nn.Sequential(
+            nn.Linear(hidden_dim[1], 1),
+        )
 
         if init_weights:
             self.apply(weights_init)
