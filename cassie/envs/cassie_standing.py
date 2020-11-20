@@ -256,8 +256,8 @@ class CassieEnv:
         height_in_bounds = self.fall_threshold < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, foot_vel) if height_in_bounds \
-            else -self.compute_cost(action, foot_grf, foot_vel, cw=(0.3, 0.35, 0.35))
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf) if height_in_bounds \
+            else -self.compute_cost(action, foot_grf, cw=(0.3, 0.35, 0.35, 0.))
 
         # Done Condition
         done = not alive_bounds or reward < self.reward_cutoff
@@ -489,7 +489,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, foot_vel, cw=(0.1, 0.1, 0.1, 0.1)):
+    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
@@ -511,7 +511,7 @@ class CassieEnv:
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm(lateral_forces) ** 2)
 
         # Total Cost
-        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel * cw[3] * c_drag
+        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel + cw[3] * c_drag
 
         # Update previous variables
         self.previous_action = action
