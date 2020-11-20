@@ -62,6 +62,8 @@ class CassieEnv:
         # Already included in cassie_mujoco
         # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
         self.midfoot_offset = np.array([0., 0., 0., 0., 0., 0.])
+        self.neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
+                                             -0.6609396704367185, 0.663921021343526])
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -254,8 +256,8 @@ class CassieEnv:
         height_in_bounds = self.fall_threshold < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action) if height_in_bounds \
-            else -self.compute_cost(action, cw=(0.3, 0.35, 0.35))
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, foot_vel) if height_in_bounds \
+            else -self.compute_cost(action, foot_grf, foot_vel, cw=(0.3, 0.35, 0.35))
 
         # Done Condition
         done = not alive_bounds or reward < self.reward_cutoff
@@ -432,7 +434,13 @@ class CassieEnv:
         else:
             r_foot_width = 1.
 
-        r_foot_placement = 0.2 * r_feet_align + 0.8 * r_foot_width if np.sum(self.target_speed) == 0 else r_foot_width
+        # 4c. Foot Orientation (keep the feet neutral)
+        r_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("left-foot"))  ** 2
+        l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
+        r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
+
+        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral +  0.15 * r_feet_align\
+            if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
         # 5. Foot/Pelvis Orientation
         fp_orientation_coeff = 100
@@ -469,18 +477,19 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
         elif self.writer is None and self.debug:
-            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
-                                                                                                                  r_pose,
-                                                                                                                  r_com_pos,
-                                                                                                                  r_com_vel,
-                                                                                                                  r_foot_placement,
-                                                                                                                  r_fp_orient,
-                                                                                                                  r_grf,
-                                                                                                                  ))
+            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
+                                                                                                                          r_pose,
+                                                                                                                          r_com_pos,
+                                                                                                                          r_com_vel,
+                                                                                                                          r_foot_placement,
+                                                                                                                          r_fp_orient,
+                                                                                                                          r_foot_neutral,
+                                                                                                                          r_grf,
+                                                                                                                         ))
 
         return reward
 
-    def compute_cost(self, action, cw=(0.1, 0.1, 0.1)):
+    def compute_cost(self, action, foot_frc, foot_vel, cw=(0.1, 0.1, 0.1, 0.1)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
@@ -497,8 +506,12 @@ class CassieEnv:
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
         c_maccel = 1 - np.exp(-min(5e-4, cost_coeff) * np.linalg.norm(motor_accel) ** 2)
 
+        # 4. Foot Dragging (Lateral)
+        lateral_forces = [foot_frc[1], foot_frc[4]]
+        c_drag = 1 - np.exp(-1e-2 * np.linalg.norm(lateral_forces) ** 2)
+
         # Total Cost
-        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel
+        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel * cw[3] * c_drag
 
         # Update previous variables
         self.previous_action = action
@@ -509,9 +522,10 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/action_change', c_action, self.total_steps)
             self.writer.add_scalar('env_cost/motor_accel', c_maccel, self.total_steps)
             self.writer.add_scalar('env_cost/power', c_power, self.total_steps)
+            self.writer.add_scalar('env_cost/drag', c_drag, self.total_steps)
         elif self.writer is None and self.debug:
-            print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}]\n'.format(
-                c_action, c_maccel, c_power))
+            print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}], Drag [{:.3f}]\n'.format(
+                c_action, c_maccel, c_power, c_drag))
 
         return cost
 
