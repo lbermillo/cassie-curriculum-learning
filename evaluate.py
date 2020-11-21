@@ -63,6 +63,8 @@ if __name__ == "__main__":
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
                         help='Name of algorithm to use [TD3, SAC] (default: TD3)')
+    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
+                        help='Size of the 2 hidden layers (default=[256, 256])')
 
     # File parameters
     parser.add_argument('--load', '-l', action='store', default=None, dest='load', required=True,
@@ -97,6 +99,7 @@ if __name__ == "__main__":
                       state_dim,
                       action_dim,
                       max_action,
+                      hidden_dim=args.hidden,
                       chkpt_pth=args.load, )
 
     agent.evaluate(env,
