@@ -18,10 +18,10 @@ if __name__ == '__main__':
                         help='Simulation rate in Hz (default: 50)')
     parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock')
-    parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.5], dest='rcut',
+    parser.add_argument('--rcut', '-r', nargs='+', type=float, default=[0.3], dest='rcut',
                         help='Ends an episode if a step reward falls below this threshold. '
                              'Enter two values [initial, final] cutoff to activate termination curriculum '
-                             '(default: 0.5)')
+                             '(default: 0.3)')
     parser.add_argument('--tw', type=float, default=1.,
                         help='Weight multiplied to the action offset added to the policy action (default: 0.0)')
     parser.add_argument('--forces', '-f', nargs='+', type=float, default=(0., 0., 0.),
