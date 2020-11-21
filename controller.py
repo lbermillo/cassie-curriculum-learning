@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import sys
 import time
 import torch
 import atexit
@@ -12,8 +11,8 @@ import numpy as np
 from rl.networks.Actor import Actor
 
 from cassie.envs import cassie_standing
-from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
+from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
 
@@ -25,6 +24,20 @@ def log(filename, times, states, inputs, outputs, targets, sto="final"):
     pickle.dump(data, filep)
 
     filep.close()
+
+
+def rotate_to_orient(vec, target_orientation):
+    quaternion = euler2quat(z=target_orientation[2], y=target_orientation[1], x=target_orientation[0])
+    iquaternion = inverse_quaternion(quaternion)
+
+    if len(vec) == 3:
+        return rotate_by_quaternion(vec, iquaternion)
+
+    elif len(vec) == 4:
+        new_orient = quaternion_product(iquaternion, vec)
+        if new_orient[0] < 0:
+            new_orient = -new_orient
+        return new_orient
 
 
 parser = argparse.ArgumentParser(description='Cassie Sim Controller')
@@ -55,6 +68,12 @@ state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
+# initialize action tracker
+prev_action = np.zeros(action_dim)
+
+# command consists of [forward velocity, lateral velocity, yaw rate]
+command = np.zeros(3)
+
 # load policy
 checkpoint = torch.load(args.load, map_location=torch.device('cpu'))
 
@@ -76,6 +95,7 @@ atexit.register(log, args.filename, time_log, state_log, input_log, output_log, 
 P = np.array([100, 100, 88, 96, 50, 100, 100, 88, 96, 50])
 D = np.array([10.0, 10.0, 8.0, 9.6, 5.0, 10.0, 10.0, 8.0, 9.6, 5.0])
 u = pd_in_t()
+
 for i in range(5):
     u.leftLeg.motorPd.pGain[i] = P[i]
     u.leftLeg.motorPd.dGain[i] = D[i]
@@ -120,7 +140,6 @@ sto_count = 0
 operation_mode = 0
 
 D_mult = 1
-orient_add = 0
 
 while True:
     # Wait until next cycle time
@@ -138,11 +157,14 @@ while True:
 
     if platform.node() == 'cassie':
         # Radio control
-        orient_add -= state.radio.channel[3] / 60.0
+        command[2] -= state.radio.channel[3] / 60.0
 
         # Reset orientation on STO
         if state.radio.channel[8] < 0:
-            orient_add = quaternion2euler(state.pelvis.orientation[:])[2]
+            command[2] = quaternion2euler(state.pelvis.orientation[:])[2]
+
+            # initialize action tracker
+            prev_action = np.zeros(action_dim)
 
             # Save log files after STO toggle (skipping first STO)
             if sto is False:
@@ -175,15 +197,14 @@ while True:
     else:
         # Automatically change orientation and speed
         tt = time.monotonic() - t0
-        orient_add += 0  # math.sin(t / 8) / 400
+        command[2] += 0  # math.sin(t / 8) / 400
 
         # Keep speed at 0 for now to test standing policy
         speed = 0.
 
     #------------------------------- 0: Standing ---------------------------
     if operation_mode == 0:
-        speed = 0
-
+        
         # Reassign because it might have been changed by the damping mode
         for i in range(5):
             u.leftLeg.motorPd.pGain[i] = P[i]
@@ -191,57 +212,41 @@ while True:
             u.rightLeg.motorPd.pGain[i] = P[i+5]
             u.rightLeg.motorPd.dGain[i] = D[i+5]
 
-        # Concatenate clock with ext_state
-        ext_state = np.concatenate(([0., 0.], [speed])) if args.clock else [speed]
+        # command consists of [forward velocity, lateral velocity, yaw rate]
+        command = np.zeros(3)
 
-        # Update orientation
-        new_orient = state.pelvis.orientation[:]
-        new_translationalVelocity = state.pelvis.translationalVelocity[:]
-        quaternion = euler2quat(z=orient_add, y=0, x=0)
-        iquaternion = inverse_quaternion(quaternion)
-        new_orient = quaternion_product(iquaternion, state.pelvis.orientation[:])
+        # create external state
+        ext_state = np.concatenate((prev_action, command))
 
-        # # pending offset to the estimated orientations
-        if new_orient[0] < 0:
-            new_orient = -new_orient
+        if args.clock:
+            # Clock is muted for standing
+            clock = [0., 0.]
 
-        # modifying translation velocity
-        new_translationalVelocity = rotate_by_quaternion(state.pelvis.translationalVelocity[:], iquaternion)
+            # Concatenate clock with ext_state
+            ext_state = np.concatenate((clock, ext_state))
 
         # Use state estimator
-        if args.reduced_input:
-            robot_state = np.concatenate([
+        robot_state = np.concatenate([
+            # pelvis height
+            [state.pelvis.position[2] - state.terrain.height],
 
-                # Pelvis States
-                new_orient,
-                state.pelvis.rotationalVelocity[:],
+            # pelvis orientation
+            rotate_to_orient(state.pelvis.orientation[:], (0, 0, command[2])),
 
-                # Motor States
-                state.motor.position[:],
-                state.motor.velocity[:],
+            # pelvis linear/translational velocity
+            rotate_to_orient(state.pelvis.translationalVelocity[:], (0, 0, command[2])),
 
-                # Foot States
-                state.leftFoot.position[:],
-                state.rightFoot.position[:],
+            # pelvis rotational/angular velocity
+            state.pelvis.rotationalVelocity[:],
 
-            ])
-        else:
+            # joint positions w/ added noise
+            state.motor.position[:],  # actuated joint positions
+            state.joint.position[:],  # unactuated joint positions
 
-            # Use state estimator
-            robot_state = np.concatenate([
-                [state.pelvis.position[2] - state.terrain.height],  # pelvis height
-                new_orient,  # pelvis orientation
-                state.motor.position[:],  # actuated joint positions
-
-                new_translationalVelocity,  # pelvis translational velocity
-                state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-                state.motor.velocity[:],  # actuated joint velocities
-
-                state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
-
-                state.joint.position[:],  # unactuated joint positions
-                state.joint.velocity[:]  # unactuated joint velocities
-            ])
+            # joint velocities
+            state.motor.velocity[:],  # actuated joint velocities
+            state.joint.velocity[:]  # unactuated joint velocities
+        ])
 
         # Concatenate robot_state to ext_state
         RL_state = np.concatenate((robot_state, ext_state))
@@ -251,8 +256,15 @@ while True:
 
         # select action according to actor's current policy
         action = policy(torch_state).cpu().data.numpy().flatten()
+
+        # update previous action
+        prev_action = action
+
         if args.learn_PD:
+            # map policy actions to hardware
             action, P, D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
+
+        # apply neutral offset to action
         target = action + offset
 
         # Send action
@@ -278,6 +290,7 @@ while True:
 
         # Measure delay
         print('delay: {:6.1f} ms'.format((time.monotonic() - t) * 1000))
+
     #------------------------------- TODO: 1: Walking/Running ---------------------------
     # elif operation_mode == 1:
 

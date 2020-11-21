@@ -17,13 +17,27 @@ import termios
 from rl.networks.Actor import Actor
 
 from cassie.envs import cassie_standing
-from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassieUDP import *
+from cassie.utils.quaternion_function import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
 
 def isData():
     return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
+
+
+def rotate_to_orient(vec, target_orientation):
+    quaternion = euler2quat(z=target_orientation[2], y=target_orientation[1], x=target_orientation[0])
+    iquaternion = inverse_quaternion(quaternion)
+
+    if len(vec) == 3:
+        return rotate_by_quaternion(vec, iquaternion)
+
+    elif len(vec) == 4:
+        new_orient = quaternion_product(iquaternion, vec)
+        if new_orient[0] < 0:
+            new_orient = -new_orient
+        return new_orient
 
 
 parser = argparse.ArgumentParser(description='Cassie Sim Controller')
@@ -53,6 +67,12 @@ state_dim  = env.observation_space.shape[0]
 action_dim = env.action_space.shape[0]
 max_action = env.action_space.high[0]
 
+# initialize action tracker
+prev_action = np.zeros(action_dim)
+
+# command consists of [forward velocity, lateral velocity, yaw rate]
+command = np.zeros(3)
+
 # Load policy
 checkpoint = torch.load(args.load)
 
@@ -70,6 +90,7 @@ symmetry = True
 P = np.array([100, 100, 88, 96, 50, 100, 100, 88, 96, 50])
 D = np.array([10.0, 10.0, 8.0, 9.6, 5.0, 10.0, 10.0, 8.0, 9.6, 5.0])
 u = pd_in_t()
+
 for i in range(5):
     u.leftLeg.motorPd.pGain[i] = P[i]
     u.leftLeg.motorPd.dGain[i] = D[i]
@@ -101,7 +122,6 @@ print('Connected!\n')
 t = time.monotonic()
 t0 = t
 
-orient_add = 0
 old_settings = termios.tcgetattr(sys.stdin)
 try:
     tty.setcbreak(sys.stdin.fileno())
@@ -121,117 +141,53 @@ try:
 
         if platform.node() == 'cassie':
             # Radio control
-            orient_add -= state.radio.channel[3] / 60.0
-            speed = max(min_speed, state.radio.channel[0] * max_speed)
-            speed = min(max_speed, state.radio.channel[0] * max_speed)
+            command[2] -= state.radio.channel[3] / 60.0
+            command[0] = max(min_speed, state.radio.channel[0] * max_speed)
+            command[0] = min(max_speed, state.radio.channel[0] * max_speed)
             phase_add = state.radio.channel[5] + 1
             # env.y_speed = max(min_y_speed, -state.radio.channel[1] * max_y_speed)
             # env.y_speed = min(max_y_speed, -state.radio.channel[1] * max_y_speed)
         else:
             # Automatically change orientation and speed
             tt = time.monotonic() - t0
-            orient_add += 0  # math.sin(t / 8) / 400
+            command[2] += 0  # math.sin(t / 8) / 400
 
-            # Keep speed at 0 for now to test standing policy
-            speed = 0.
 
-            if isData():
-                c = sys.stdin.read(1)
-                if c == 'x':
-                    force = 2000
-                    direction = 0
-                    force_arr = np.zeros(6)
-                    force_arr[int(direction)] = int(force)
-                    env.sim.apply_force(force_arr)
+        # command consists of [forward velocity, lateral velocity, yaw rate]
+        command = np.zeros(3)
 
-                    print('Applied {} N in +X direction'.format(force))
+        # create external state
+        ext_state = np.concatenate((prev_action, command))
 
-                elif c == 'y':
-                    force = 200
-                    direction = 1
-                    force_arr = np.zeros(6)
-                    force_arr[int(direction)] = int(force)
-                    env.sim.apply_force(force_arr)
+        if args.clock:
+            # Clock is muted for standing
+            clock = [0., 0.]
 
-                    print('Applied {} N in +Y direction'.format(force))
-
-                elif c == 'z':
-                    force = 200
-                    direction = 2
-                    force_arr = np.zeros(6)
-                    force_arr[direction] = int(force)
-                    env.sim.apply_force(force_arr)
-
-                    print('Applied {} N in +Z direction'.format(force))
-
-                elif c == 'X':
-                    force = -200
-                    direction = 0
-                    force_arr = np.zeros(6)
-                    force_arr[int(direction)] = int(force)
-                    env.sim.apply_force(force_arr)
-
-                    print('Applied {} N in -X direction'.format(force))
-
-                elif c == 'Y':
-                    force = -200
-                    direction = 1
-                    force_arr = np.zeros(6)
-                    force_arr[int(direction)] = int(force)
-                    env.sim.apply_force(force_arr)
-
-                    print('Applied {} N in -Y direction'.format(force))
-
-                elif c == 'Z':
-                    force = -200
-                    direction = 2
-                    force_arr = np.zeros(6)
-                    force_arr[direction] = int(force)
-                    env.sim.apply_force(force_arr)
-
-                    print('Applied {} N in -Z direction'.format(force))
-
-                else:
-                    pass
-
-        # Clock is muted for standing
-        clock = [0., 0.]
-
-        # Concatenate clock with ext_state
-        ext_state = np.concatenate((clock, [speed])) if args.clock else [speed]
+            # Concatenate clock with ext_state
+            ext_state = np.concatenate((clock, ext_state))
 
         # Use state estimator
-        if args.reduced_input:
-            robot_state = np.concatenate([
+        robot_state = np.concatenate([
+            # pelvis height
+            [state.pelvis.position[2] - state.terrain.height],
 
-                # Pelvis States
-                state.pelvis.orientation[:],
-                state.pelvis.rotationalVelocity[:],
+            # pelvis orientation
+            rotate_to_orient(state.pelvis.orientation[:], (0, 0, command[2])),
 
-                # Motor States
-                state.motor.position[:],
-                state.motor.velocity[:],
+            # pelvis linear/translational velocity
+            rotate_to_orient(state.pelvis.translationalVelocity[:], (0, 0, command[2])),
 
-                # Foot States
-                state.leftFoot.position[:],
-                state.rightFoot.position[:],
+            # pelvis rotational/angular velocity
+            state.pelvis.rotationalVelocity[:],
 
-            ])
-        else:
-            robot_state = np.concatenate([
-                [state.pelvis.position[2] - state.terrain.height],  # pelvis height
-                state.pelvis.orientation[:],  # pelvis orientation
-                state.motor.position[:],  # actuated joint positions
+            # joint positions w/ added noise
+            state.motor.position[:],  # actuated joint positions
+            state.joint.position[:],  # unactuated joint positions
 
-                state.pelvis.translationalVelocity[:],  # pelvis translational velocity
-                state.pelvis.rotationalVelocity[:],  # pelvis rotational velocity
-                state.motor.velocity[:],  # actuated joint velocities
-
-                state.pelvis.translationalAcceleration[:],  # pelvis translational acceleration
-
-                state.joint.position[:],  # unactuated joint positions
-                state.joint.velocity[:]  # unactuated joint velocities
-            ])
+            # joint velocities
+            state.motor.velocity[:],  # actuated joint velocities
+            state.joint.velocity[:]  # unactuated joint velocities
+        ])
 
         # Concatenate robot_state to ext_state
         RL_state = np.concatenate((robot_state, ext_state))
@@ -241,10 +197,21 @@ try:
 
         # select action according to actor's current policy
         action = policy(torch_state).cpu().data.numpy().flatten()
+
+        # update previous action
+        prev_action = action
+
+        # apply neutral offset to action
         target = action + offset
 
         # Send action
         for i in range(5):
+            u.leftLeg.motorPd.pGain[i] = P[i]
+            u.leftLeg.motorPd.dGain[i] = D[i]
+
+            u.rightLeg.motorPd.pGain[i] = P[i + 5]
+            u.rightLeg.motorPd.dGain[i] = D[i + 5]
+
             u.leftLeg.motorPd.pTarget[i] = target[i]
             u.rightLeg.motorPd.pTarget[i] = target[i + 5]
 
