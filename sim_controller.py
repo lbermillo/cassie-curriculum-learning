@@ -49,7 +49,7 @@ parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
 parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock')
-parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
 
 args = parser.parse_args()
