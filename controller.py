@@ -51,7 +51,7 @@ parser.add_argument('--reduced_input', action='store_true', default=False,
                         help='Trains with inputs that are directly measured only (default: False)')
 parser.add_argument('--no_clock', action='store_false', default=True, dest='clock',
                         help='Disables clock')
-parser.add_argument('--hidden', type=float, nargs='+', default=(256, 256),
+parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
                         help='Size of the 2 hidden layers (default=[256, 256])')
 parser.add_argument('--learn_PD', action='store_true', default=False, dest='learn_PD',
                         help='Adds PD gains to the action space. Number of actions will become 30 instead of 10')
