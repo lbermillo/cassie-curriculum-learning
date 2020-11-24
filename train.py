@@ -57,6 +57,8 @@ if __name__ == '__main__':
                         help='Creates a seed to the specified value (default: None)')
     parser.add_argument('--expl_noise', type=float, default=0.1,
                         help='Upper bound on added noise added to the policy output for exploration (default=0.1)')
+    parser.add_argument('--encoder_noise', type=float, default=0.02,
+                        help='Upper and lower bound on added noise added to the joints (default=0.02)')
     parser.add_argument('--reset_ratio', type=float, default=0,
                         help='Ratio for frequency of applying perturbations (default=0)')
     parser.add_argument('--use_phase', action='store_true', default=False,
@@ -161,6 +163,7 @@ if __name__ == '__main__':
                             reward_cutoff=args.rcut[0],
                             target_action_weight=args.tw,
                             fall_threshold=args.fall_threshold,
+                            encoder_noise=args.encoder_noise,
                             forces=args.forces,
                             force_fq=args.force_fq,
                             min_speed=args.min_speed,

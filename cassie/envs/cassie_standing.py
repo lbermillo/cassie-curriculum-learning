@@ -17,7 +17,7 @@ class CassieEnv:
 
     def __init__(self, simrate=50, clock_based=True,
                  reward_cutoff=0.3, target_action_weight=1.0, target_height=0.9, training_steps=1e6, learn_command=False,
-                 forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.6,
+                 forces=(0, 0, 0), force_fq=100, min_height=0.4, max_height=3.0, max_orient=0, fall_threshold=0.6, encoder_noise=0.2,
                  min_speed=(0, 0, 0), max_speed=(1, 1, 1), power_threshold=150, reduced_input=False, learn_PD=False,
                  debug=False, config="cassie/cassiemujoco/cassie.xml", traj='walking', writer=None):
 
@@ -49,7 +49,7 @@ class CassieEnv:
         self.writer = writer
 
         # Encoder noise
-        self.encoder_noise = 0.01
+        self.encoder_noise = encoder_noise
         self.motor_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=10)
         self.joint_encoder_noise = np.random.uniform(-self.encoder_noise, self.encoder_noise, size=6)
 
@@ -184,6 +184,12 @@ class CassieEnv:
         self.r_foot_vel = (foot_pos[3:6] - prev_foot[3:6]) / 0.0005
 
     def step(self, action):
+
+        # TODO: hold pelvis in place
+        # self.sim.hold()
+
+        # TODO: release pelvis
+        # self.sim.release()
 
         if self.timestep % self.force_fq == 0:
             if np.sum(self.target_speed) == 0:
