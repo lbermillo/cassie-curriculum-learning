@@ -194,9 +194,9 @@ class CassieEnv:
         if self.timestep % self.force_fq == 0:
             if np.sum(self.target_speed) == 0:
                 # Apply perturbations to the pelvis in random directions
-                self.sim.apply_force([random.choice([-self.forces[0], self.forces[0]]),
-                                      random.choice([-self.forces[1], self.forces[1]]),
-                                      random.choice([-self.forces[2], self.forces[2]]),
+                self.sim.apply_force([random.uniform(-self.forces[0], self.forces[0]),
+                                      random.uniform(-self.forces[1], self.forces[1]),
+                                      random.uniform(-self.forces[2], self.forces[2]),
                                       0,
                                       0])
             else:
@@ -506,7 +506,7 @@ class CassieEnv:
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-cost_coeff * np.linalg.norm(action_diff) ** 2)
+        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
 
         # 3. Motor Acceleration Cost
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
