@@ -394,24 +394,20 @@ class CassieEnv:
         # 1. Pelvis Orientation (Commanded Yaw)
         pelvis_orient_coeff = 100
 
-        # convert quaternion values to euler [roll, pitch, yaw]
-        pelvis_orient = quaternion2euler(qpos[3:7])
+        # convert target orientation to quaternion
+        target_quat = euler2quat(z=self.target_orientation[2], y=self.target_orientation[1], x=self.target_orientation[0])
 
-        r_com_roll  = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[0] - self.target_orientation[0]) ** 2)
-        r_com_pitch = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[1] - self.target_orientation[1]) ** 2)
-        r_com_yaw   = np.exp(-pelvis_orient_coeff * np.linalg.norm(pelvis_orient[2] - self.target_orientation[2]) ** 2)
-
-        r_pose = 0.5 * r_com_yaw + 0.4 * r_com_roll + 0.1 * r_com_pitch
+        r_pose = np.exp(-pelvis_orient_coeff * np.linalg.norm(qpos[3:7] - target_quat))
 
         # 2. CoM Position Modulation
-        com_pos_coeff = 50
+        com_pos_coeff = [100, 200, 10]
 
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
 
-        x_com_pos = np.exp(-com_pos_coeff * np.linalg.norm(qpos[0] - xy_target_pos[0]) ** 2)
-        y_com_pos = np.exp(-com_pos_coeff * np.linalg.norm(qpos[1] - xy_target_pos[1]) ** 2)
-        z_com_pos = np.exp(-10 * (qpos[2] - self.target_height) ** 2)
+        x_com_pos = np.exp(-com_pos_coeff[0] * np.linalg.norm(qpos[0] - xy_target_pos[0]) ** 2)
+        y_com_pos = np.exp(-com_pos_coeff[1] * np.linalg.norm(qpos[1] - xy_target_pos[1]) ** 2)
+        z_com_pos = np.exp(-com_pos_coeff[2] * (qpos[2] - self.target_height) ** 2)
 
         r_com_pos = 0.6 * y_com_pos + 0.3 * z_com_pos + 0.1 * x_com_pos
 
@@ -451,6 +447,10 @@ class CassieEnv:
         # 5. Foot/Pelvis Orientation
         fp_orientation_coeff = 100
         foot_yaw = np.array([qpos[8], qpos[22]])
+
+        # convert quaternion values to euler [roll, pitch, yaw]
+        pelvis_orient = quaternion2euler(qpos[3:7])
+
         left_foot_orient  = np.exp(-fp_orientation_coeff * (foot_yaw[0] - pelvis_orient[2]) ** 2)
         right_foot_orient = np.exp(-fp_orientation_coeff * (foot_yaw[1] - pelvis_orient[2]) ** 2)
 
