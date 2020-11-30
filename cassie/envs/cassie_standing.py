@@ -392,12 +392,15 @@ class CassieEnv:
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
         # 1. Pelvis Orientation (Commanded Yaw)
-        pelvis_orient_coeff = 100
+        pelvis_orient_coeff = 5e4
 
         # convert target orientation to quaternion
-        target_quat = euler2quat(z=self.target_orientation[2], y=self.target_orientation[1], x=self.target_orientation[0])
+        target_orient = euler2quat(z=self.target_orientation[2], y=self.target_orientation[1], x=self.target_orientation[0])
 
-        r_pose = np.exp(-pelvis_orient_coeff * np.linalg.norm(qpos[3:7] - target_quat))
+        # calculate orientation error
+        orient_error = 1 - np.inner(qpos[3:7], target_orient) ** 2
+
+        r_pose = np.exp(-pelvis_orient_coeff * orient_error ** 2)
 
         # 2. CoM Position Modulation
         com_pos_coeff = [100, 200, 10]
