@@ -498,7 +498,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1, 0.1)):
+    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1, 0.3)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
@@ -520,7 +520,7 @@ class CassieEnv:
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm(lateral_forces) ** 2)
 
         # 5. Contact Cost (Keep at least one foot on the ground)
-        c_contact = 1 if (foot_frc[2] + foot_frc[5]) == 0 else 0
+        c_contact = 1 if (foot_frc[2] + foot_frc[5]) <= 0 else 0
 
         # Total Cost
         cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel + cw[3] * c_drag + cw[4] * c_contact
