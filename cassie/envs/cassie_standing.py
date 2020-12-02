@@ -191,8 +191,8 @@ class CassieEnv:
         # TODO: release pelvis
         # self.sim.release()
 
-        if self.timestep % self.force_fq == 0:
-            if np.sum(self.target_speed) == 0:
+        if self.timestep % np.random.randint(low=1, high=self.force_fq) == 0:
+            if np.sum(self.target_speed) == 0 and np.all(np.abs(self.sim.qvel()[:2]) < 0.2):
                 # Apply perturbations to the pelvis in random directions
                 self.sim.apply_force([random.uniform(-self.forces[0], self.forces[0]),
                                       random.uniform(-self.forces[1], self.forces[1]),
@@ -444,7 +444,7 @@ class CassieEnv:
         l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
         r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
 
-        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral +  0.15 * r_feet_align\
+        r_foot_placement = 0.5 * r_foot_width + 0.35 * r_foot_neutral +  0.15 * r_feet_align\
             if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
         # 5. Foot/Pelvis Orientation
