@@ -263,7 +263,7 @@ class CassieEnv:
 
         # Current Reward
         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf) if height_in_bounds \
-            else -self.compute_cost(action, foot_grf, cw=(0.3, 0.35, 0.35, 0.))
+            else -self.compute_cost(action, foot_grf, cw=(0.3, 0.35, 0.35, 0., 0.))
 
         # Done Condition
         done = not alive_bounds or reward < self.reward_cutoff
@@ -498,7 +498,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1)):
+    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1, 0.1)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity)
@@ -509,7 +509,7 @@ class CassieEnv:
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
+        c_action = 1 - np.exp(-(2.5 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
 
         # 3. Motor Acceleration Cost
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
@@ -519,8 +519,11 @@ class CassieEnv:
         lateral_forces = [foot_frc[1], foot_frc[4]]
         c_drag = 1 - np.exp(-1e-2 * np.linalg.norm(lateral_forces) ** 2)
 
+        # 5. Contact Cost (Keep at least one foot on the ground)
+        c_contact = 1 if (foot_frc[2] + foot_frc[5]) == 0 else 0
+
         # Total Cost
-        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel + cw[3] * c_drag
+        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel + cw[3] * c_drag + cw[4] * c_contact
 
         # Update previous variables
         self.previous_action = action
@@ -532,9 +535,10 @@ class CassieEnv:
             self.writer.add_scalar('env_cost/motor_accel', c_maccel, self.total_steps)
             self.writer.add_scalar('env_cost/power', c_power, self.total_steps)
             self.writer.add_scalar('env_cost/drag', c_drag, self.total_steps)
+            self.writer.add_scalar('env_cost/contact', c_contact, self.total_steps)
         elif self.writer is None and self.debug:
-            print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}], Drag [{:.3f}]\n'.format(
-                c_action, c_maccel, c_power, c_drag))
+            print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}], Drag [{:.3f}], '
+                  'Foot Contact[{:.3f}]\n'.format(c_action, c_maccel, c_power, c_drag, c_contact))
 
         return cost
 
