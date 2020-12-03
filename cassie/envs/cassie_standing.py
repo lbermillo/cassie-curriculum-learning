@@ -118,6 +118,7 @@ class CassieEnv:
         # Action and velocity tracking for large changes
         self.previous_action = np.zeros(num_actions)
         self.previous_velocity = self.cassie_state.motor.velocity[:]
+        self.previous_acceleration = np.zeros(len(self.previous_velocity))
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
@@ -211,7 +212,7 @@ class CassieEnv:
 
         # random changes to target yaw of the pelvis
         if np.random.rand() < 0.1 and self.learn_command:
-            self.target_orientation[2] += np.random.uniform(-self.max_orient, self.max_orient)
+            self.target_orientation += np.random.uniform(-self.max_orient, self.max_orient, size=3)
 
         # simulating delays
         simrate = self.simrate + np.random.randint(-5, 5) if not self.test else self.simrate
@@ -262,8 +263,8 @@ class CassieEnv:
         height_in_bounds = self.fall_threshold < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf) if height_in_bounds \
-            else -self.compute_cost(action, foot_grf, cw=(0.3, 0.35, 0.35, 0., 0.))
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, qvel) if height_in_bounds \
+            else -self.compute_cost(action, foot_grf, qvel, cw=(0.3, 0.35, 0.35, 0., 0.))
 
         # Done Condition
         done = not alive_bounds or reward < self.reward_cutoff
@@ -281,6 +282,7 @@ class CassieEnv:
         self.reset_cassie_state()
         self.previous_action = np.zeros(self.action_space.shape[0])
         self.previous_velocity = self.cassie_state.motor.velocity[:]
+        self.previous_acceleration = np.zeros(len(self.previous_velocity))
 
         # reset target variables
         self.target_orientation = np.zeros(3)
@@ -391,7 +393,7 @@ class CassieEnv:
         # midfoot position
         foot_pos = np.concatenate([left_foot_pos - self.midfoot_offset[:3], right_foot_pos - self.midfoot_offset[3:]])
 
-        # 1. Pelvis Orientation (Commanded Yaw)
+        # 1. Pelvis Orientation (Commanded Yaw or Gaze (roll, pitch, and yaw) )
         pelvis_orient_coeff = 5e4
 
         # convert target orientation to quaternion
@@ -403,7 +405,7 @@ class CassieEnv:
         r_pose = np.exp(-pelvis_orient_coeff * orient_error ** 2)
 
         # 2. CoM Position Modulation
-        com_pos_coeff = [100, 200, 10]
+        com_pos_coeff = [250, 500, 10]
 
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
                                   0.5 * (foot_pos[1] + foot_pos[4])])
@@ -444,7 +446,7 @@ class CassieEnv:
         l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
         r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
 
-        r_foot_placement = 0.5 * r_foot_width + 0.35 * r_foot_neutral +  0.15 * r_feet_align\
+        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral +  0.15 * r_feet_align\
             if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
         # 5. Foot/Pelvis Orientation
@@ -467,10 +469,6 @@ class CassieEnv:
 
         r_grf = 0.5 * left_grf + 0.5 * right_grf
 
-        # TODO: norm squared pose deviation from offset 10% - 20%
-        # 7. Joint Position Reference (Offset is a standing position) use for hip roll and yaw
-        # r_ref = np.exp(-np.linalg.norm(self.cassie_state.motor.position[:] - self.offset) ** 2)
-
         # Total Reward
         reward = (rw[0] * r_pose
                   + rw[1] * r_com_pos
@@ -486,7 +484,7 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
         elif self.writer is None and self.debug:
-            print('[{}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
+            print('[{:3}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
                                                                                                                           r_pose,
                                                                                                                           r_com_pos,
                                                                                                                           r_com_vel,
@@ -498,22 +496,27 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, cw=(0.1, 0.1, 0.1, 0.1, 0.3)):
+    def compute_cost(self, action, foot_frc, qvel, cw=(0.15, 0.1, 0.1, 0.1, 0.3)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
-        # 1. Power Consumption (Torque and Velocity)
+        # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
-                                                    self.cassie_state.motor.velocity[:10])
+                                                    self.cassie_state.motor.velocity[:10],
+                                                    positive_only=False)
 
-        c_power = 1. - np.exp(-min(1e-5, cost_coeff) * power_estimate ** 2)
+        # calculate cost of transport
+        cot = power_estimate / (np.sum(self.mass) * qvel[0]) if qvel[0] > 0 else power_estimate
+
+        c_power = 1. - np.exp(-min(5e-5, cost_coeff) * cot ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-(2.5 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
+        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
 
-        # 3. Motor Acceleration Cost
+        # 3. Jerk Cost
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
-        c_maccel = 1 - np.exp(-min(5e-4, cost_coeff) * np.linalg.norm(motor_accel) ** 2)
+        motor_jerk  = np.subtract(self.previous_acceleration, motor_accel)
+        c_mjerk = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(motor_jerk) ** 2)
 
         # 4. Foot Dragging (Lateral)
         lateral_forces = [foot_frc[1], foot_frc[4]]
@@ -523,22 +526,23 @@ class CassieEnv:
         c_contact = 1 if (foot_frc[2] + foot_frc[5]) <= 0 else 0
 
         # Total Cost
-        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_maccel + cw[3] * c_drag + cw[4] * c_contact
+        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_mjerk + cw[3] * c_drag + cw[4] * c_contact
 
         # Update previous variables
         self.previous_action = action
+        self.previous_acceleration = motor_accel
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
         if self.writer is not None and self.debug and not self.test:
             # log episode reward to tensorboard
             self.writer.add_scalar('env_cost/action_change', c_action, self.total_steps)
-            self.writer.add_scalar('env_cost/motor_accel', c_maccel, self.total_steps)
+            self.writer.add_scalar('env_cost/c_mjerk', c_mjerk, self.total_steps)
             self.writer.add_scalar('env_cost/power', c_power, self.total_steps)
             self.writer.add_scalar('env_cost/drag', c_drag, self.total_steps)
             self.writer.add_scalar('env_cost/contact', c_contact, self.total_steps)
         elif self.writer is None and self.debug:
-            print('Costs:\t Action Change [{:.3f}], Motor Acceleration [{:.3f}], Power [{:.3f}], Drag [{:.3f}], '
-                  'Foot Contact[{:.3f}]\n'.format(c_action, c_maccel, c_power, c_drag, c_contact))
+            print('Costs:\t Action Change [{:.3f}], Motor Jerk [{:.3f}], Power [{:.3f}], Drag [{:.3f}], '
+                  'Foot Contact[{:.3f}]\n'.format(c_action, c_mjerk, c_power, c_drag, c_contact))
 
         return cost
 
@@ -584,8 +588,9 @@ class CassieEnv:
 
     def get_full_state(self):
 
-        # command consists of [forward velocity, lateral velocity, yaw rate]
-        command = [self.target_speed[0], self.target_speed[1], self.target_orientation[2]]
+        # command consists of [forward velocity, lateral velocity, yaw/gaze]
+        # command = np.concatenate((self.target_speed[:2], self.target_orientation))  # turn on for gaze
+        command = np.concatenate((self.target_speed[:2], self.target_orientation[2:]))
 
         # create external state
         ext_state = np.concatenate((self.previous_action, command))

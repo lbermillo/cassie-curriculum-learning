@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def estimate_power(torque, velocity):
+def estimate_power(torque, velocity, positive_only=False):
     # Specs taken from RoboDrive datasheet for ILM 115x50
 
     # in Newton-meters
@@ -28,8 +28,12 @@ def estimate_power(torque, velocity):
     # get power loss of each motor
     power_losses = power_loss_constants * np.square(input_torques)
 
-    # calculate motor power for each motor
-    motor_powers = np.amax(np.diag(output_torques).dot(output_velocity.reshape(10, 1)), initial=0, axis=1)
+    if positive_only:
+        # calculate positive motor power only for each motor if optimizing for
+        motor_powers = np.amax(np.diag(output_torques).dot(output_velocity.reshape(10, 1)), initial=0, axis=1)
+    else:
+        # calculate motor power for each motor
+        motor_powers = np.diag(output_torques).dot(output_velocity.reshape(10, 1))
 
     # estimate power
     return np.sum(motor_powers) + np.sum(power_losses), {'input_torques': input_torques, 'motor_powers': motor_powers}
