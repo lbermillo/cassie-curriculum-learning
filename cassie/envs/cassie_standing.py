@@ -140,6 +140,8 @@ class CassieEnv:
 
     def step_simulation(self, action):
 
+        # TODO: Add noise to gains either here or in reset fn
+
         # TODO: learn_PD
         if self.learn_PD:
             action, self.P, self.D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
@@ -192,7 +194,7 @@ class CassieEnv:
         # TODO: release pelvis
         # self.sim.release()
 
-        if self.timestep % np.random.randint(low=1, high=self.force_fq) == 0:
+        if self.timestep % random.randint(1, self.force_fq) == 0:
             if np.sum(self.target_speed) == 0 and np.all(np.abs(self.sim.qvel()[:2]) < 0.2):
                 # Apply perturbations to the pelvis in random directions
                 self.sim.apply_force([random.uniform(-self.forces[0], self.forces[0]),
@@ -404,7 +406,7 @@ class CassieEnv:
 
         r_pose = np.exp(-pelvis_orient_coeff * orient_error ** 2)
 
-        # 2. CoM Position Modulation
+        # 2. CoM Position Modulation TODO: Try w/out height reward, just penalize for falling below threshold
         com_pos_coeff = [250, 500, 10]
 
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
@@ -414,7 +416,7 @@ class CassieEnv:
         y_com_pos = np.exp(-com_pos_coeff[1] * np.linalg.norm(qpos[1] - xy_target_pos[1]) ** 2)
         z_com_pos = np.exp(-com_pos_coeff[2] * (qpos[2] - self.target_height) ** 2)
 
-        r_com_pos = 0.6 * y_com_pos + 0.3 * z_com_pos + 0.1 * x_com_pos
+        r_com_pos = 0.5 * y_com_pos + 0.3 * x_com_pos + 0.2 * z_com_pos
 
         # 3. CoM Velocity Modulation (Commanded XY)
         x_target_vel = np.exp(-100 * np.linalg.norm(qvel[0] - self.target_speed[0]) ** 2)
@@ -446,10 +448,10 @@ class CassieEnv:
         l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
         r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
 
-        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral +  0.15 * r_feet_align\
+        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral + 0.15 * r_feet_align\
             if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
-        # 5. Foot/Pelvis Orientation
+        # 5. Foot/Pelvis Orientation TODO: Fix for gazing, feet needs to be detached from pelvis
         fp_orientation_coeff = 100
         foot_yaw = np.array([qpos[8], qpos[22]])
 
@@ -485,18 +487,18 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
         elif self.writer is None and self.debug:
             print('[{:3}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], GRF[{:.3f}]]'.format(self.timestep,
-                                                                                                                          r_pose,
-                                                                                                                          r_com_pos,
-                                                                                                                          r_com_vel,
-                                                                                                                          r_foot_placement,
-                                                                                                                          r_fp_orient,
-                                                                                                                          r_foot_neutral,
-                                                                                                                          r_grf,
-                                                                                                                         ))
+                                                                                                                            r_pose,
+                                                                                                                            r_com_pos,
+                                                                                                                            r_com_vel,
+                                                                                                                            r_foot_placement,
+                                                                                                                            r_fp_orient,
+                                                                                                                            r_foot_neutral,
+                                                                                                                            r_grf,
+                                                                                                                           ))
 
         return reward
 
-    def compute_cost(self, action, foot_frc, qvel, cw=(0.15, 0.1, 0.1, 0.1, 0.3)):
+    def compute_cost(self, action, foot_frc, qvel, cw=(0.2, 0., 0., 0.15, 0.3)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
@@ -505,13 +507,14 @@ class CassieEnv:
                                                     positive_only=False)
 
         # calculate cost of transport
-        cot = power_estimate / (np.sum(self.mass) * qvel[0]) if qvel[0] > 0 else power_estimate
+        cot = power_estimate / (np.sum(self.mass) * qvel[0]) if self.target_speed[0] > 0 or self.target_speed[0] < 0\
+            else power_estimate
 
-        c_power = 1. - np.exp(-min(5e-5, cost_coeff) * cot ** 2)
+        c_power = 1. - np.exp(-(1e-5 / abs(qvel[0])) * power_estimate ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
+        c_action = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
 
         # 3. Jerk Cost
         motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
@@ -519,8 +522,10 @@ class CassieEnv:
         c_mjerk = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(motor_jerk) ** 2)
 
         # 4. Foot Dragging (Lateral)
-        lateral_forces = [foot_frc[1], foot_frc[4]]
-        c_drag = 1 - np.exp(-1e-2 * np.linalg.norm(lateral_forces) ** 2)
+        ML_forces = 1 - np.exp(-1e-2 * np.linalg.norm([foot_frc[1], foot_frc[4]]) ** 2)
+        AP_forces = 1 - np.exp(-1e-2 * np.linalg.norm([foot_frc[0], foot_frc[3]]) ** 2)
+
+        c_drag = 0.6 * ML_forces + 0.4 * AP_forces
 
         # 5. Contact Cost (Keep at least one foot on the ground)
         c_contact = 1 if (foot_frc[2] + foot_frc[5]) <= 0 else 0
