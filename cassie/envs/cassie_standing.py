@@ -504,13 +504,14 @@ class CassieEnv:
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
                                                     self.cassie_state.motor.velocity[:10],
-                                                    positive_only=False)
+                                                    positive_only=True)
 
-        # calculate cost of transport
-        cot = power_estimate / (np.sum(self.mass) * qvel[0]) if self.target_speed[0] > 0 or self.target_speed[0] < 0\
-            else power_estimate
+        # calculate cost of transport in the XY
+        cot_x = power_estimate / (np.sum(self.mass) * abs(qvel[0])) if abs(qvel[0]) > 0 else power_estimate
+        cot_y = power_estimate / (np.sum(self.mass) * abs(qvel[1])) if abs(qvel[1]) > 0 else power_estimate
 
-        c_power = 1. - np.exp(-(1e-5 / abs(qvel[0])) * power_estimate ** 2)
+        cot = 0.75 * cot_x + 0.25 * cot_y
+        c_power = 1. - np.exp(-1e-5 * cot ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
