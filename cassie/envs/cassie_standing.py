@@ -510,8 +510,8 @@ class CassieEnv:
         cot_x = power_estimate / (np.sum(self.mass) * abs(qvel[0])) if abs(qvel[0]) > 0 else power_estimate
         cot_y = power_estimate / (np.sum(self.mass) * abs(qvel[1])) if abs(qvel[1]) > 0 else power_estimate
 
-        cot = 0.75 * cot_x + 0.25 * cot_y
-        c_power = 1. - np.exp(-1e-5 * cot ** 2)
+        cot = 0.5 * cot_x + 0.5 * cot_y
+        c_power = 1. - np.exp(-5e-6 * cot ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
