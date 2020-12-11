@@ -204,7 +204,7 @@ class Agent:
             if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
 
                 # get evaluation score
-                score = self.evaluate(env, render=False, max_steps=max_steps)
+                score = self.evaluate(env, render=False, max_steps=max_steps, reset_ratio=reset_ratio, use_phase=use_phase)
 
                 # update reward termination
                 if self.tc is not None:
