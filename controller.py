@@ -262,18 +262,20 @@ while True:
 
         if args.learn_PD:
             # map policy actions to hardware
-            action, P, D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
+            target_P = P + action[10:20] * min(P)
+            target_D = D + action[20:]   * min(D)
+            action   = action[:10]
 
         # apply neutral offset to action
         target = action + offset
 
         # Send action
         for i in range(5):
-            u.leftLeg.motorPd.pGain[i] = P[i]
-            u.leftLeg.motorPd.dGain[i] = D[i]
+            u.leftLeg.motorPd.pGain[i] = P[i] if not args.learn_PD else target_P[i]
+            u.leftLeg.motorPd.dGain[i] = D[i] if not args.learn_PD else target_D[i]
 
-            u.rightLeg.motorPd.pGain[i] = P[i + 5]
-            u.rightLeg.motorPd.dGain[i] = D[i + 5]
+            u.rightLeg.motorPd.pGain[i] = P[i + 5] if not args.learn_PD else target_P[i + 5]
+            u.rightLeg.motorPd.dGain[i] = D[i + 5] if not args.learn_PD else target_D[i + 5]
 
             u.leftLeg.motorPd.pTarget[i] = target[i]
             u.rightLeg.motorPd.pTarget[i] = target[i + 5]
