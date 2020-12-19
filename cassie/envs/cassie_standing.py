@@ -61,7 +61,7 @@ class CassieEnv:
         # L/R midfoot offset (https://github.com/agilityrobotics/agility-cassie-doc/wiki/Toe-Model)
         # Already included in cassie_mujoco
         # self.midfoot_offset = np.array([0.1762, 0.05219, 0., 0.1762, -0.05219, 0.])
-        self.midfoot_offset = np.array([0., 0., 0., 0., 0., 0.])
+        self.midfoot_offset = np.array([-0.05, 0., 0., -0.05, 0., 0.])
         self.neutral_foot_orient = np.array([-0.24790886454547323, -0.24679713195445646,
                                              -0.6609396704367185, 0.663921021343526])
 
@@ -81,10 +81,9 @@ class CassieEnv:
         self.timestep = 0
         self.total_steps = 0
 
-        # TODO: learn_PD
         # Initial Actions
-        self.P = np.array([100., 100., 88., 96., 50.]) if not self.learn_PD else np.random.randint(low=0, high=100, size=10)
-        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0]) if not self.learn_PD else np.random.randint(low=0, high=100, size=10)
+        self.P = np.array([100., 100., 88., 96., 50., 100., 100., 88., 96., 50.])
+        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0, 10.0, 10.0, 8.0, 9.6, 5.0])
 
         self.u = pd_in_t()
 
@@ -141,20 +140,13 @@ class CassieEnv:
     def step_simulation(self, action):
 
         # TODO: Add noise to gains either here or in reset fn
-
-        # TODO: learn_PD
         if self.learn_PD:
-            action, self.P, self.D = action[:10], np.abs(action[10:20] * 100), np.abs(action[20:] * 10)
+            target_P = self.P + (action[10:20] * min(self.P))
+            target_D = self.D + (action[20:]   * min(self.D))
+            action   = action[:10]
 
-        # TODO: Create Target Action
-        # action = np.array([0., 0., action[0], action[1], action[2],
-        #                    0., 0., action[3], action[4], action[5]])
-        # Uncomment to debug hip roll and yaw motors
-        # action[0] = 0.
-        # action[1] = 0.
-        # action[5] = 0.
-        # action[6] = 0.
-        target = action + (self.offset_weight * self.offset) - self.motor_encoder_noise
+        # Create Target Action
+        target = (action + self.offset) - self.motor_encoder_noise
 
         foot_pos = np.zeros(6)
         self.sim.foot_pos(foot_pos)
@@ -163,19 +155,19 @@ class CassieEnv:
 
         # Apply Action
         for i in range(5):
-            self.u.leftLeg.motorPd.pGain[i]  = self.P[i]
-            self.u.rightLeg.motorPd.pGain[i] = self.P[i] if not self.learn_PD else self.P[i + 5]
+            self.u.leftLeg.motorPd.pGain[i]  = self.P[i]     if not self.learn_PD else target_P[i]
+            self.u.rightLeg.motorPd.pGain[i] = self.P[i + 5] if not self.learn_PD else target_P[i + 5]
 
-            self.u.leftLeg.motorPd.dGain[i]  = self.D[i]
-            self.u.rightLeg.motorPd.dGain[i] = self.D[i] if not self.learn_PD else self.D[i + 5]
+            self.u.leftLeg.motorPd.dGain[i]  = self.D[i]     if not self.learn_PD else target_D[i]
+            self.u.rightLeg.motorPd.dGain[i] = self.D[i + 5] if not self.learn_PD else target_D[i + 5]
 
-            self.u.leftLeg.motorPd.torque[i] = 0  # Feedforward torque
+            self.u.leftLeg.motorPd.torque[i]  = 0  # Feedforward torque
             self.u.rightLeg.motorPd.torque[i] = 0
 
-            self.u.leftLeg.motorPd.pTarget[i] = target[i]
+            self.u.leftLeg.motorPd.pTarget[i]  = target[i]
             self.u.rightLeg.motorPd.pTarget[i] = target[i + 5]
 
-            self.u.leftLeg.motorPd.dTarget[i] = 0
+            self.u.leftLeg.motorPd.dTarget[i]  = 0
             self.u.rightLeg.motorPd.dTarget[i] = 0
 
         # Send action input (u) into sim and update cassie_state
@@ -294,11 +286,6 @@ class CassieEnv:
             self.target_speed[2] = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
         else:
             self.target_speed = np.zeros(3)
-
-        # TODO: learn_PD
-        if self.learn_PD:
-            self.P = np.random.randint(low=0, high=100, size=10)
-            self.D = np.random.randint(low=0, high=10,  size=10)
 
         if not self.test:
             # TODO: randomize mass and recalculate weight
@@ -498,7 +485,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, qvel, cw=(0.2, 0., 0., 0.15, 0.3)):
+    def compute_cost(self, action, foot_frc, qvel, cw=(0., 0., 0., 0.15, 0.3)):
         cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
@@ -515,12 +502,10 @@ class CassieEnv:
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
+        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
 
-        # 3. Jerk Cost
-        motor_accel = np.subtract(self.previous_velocity, self.cassie_state.motor.velocity[:])
-        motor_jerk  = np.subtract(self.previous_acceleration, motor_accel)
-        c_mjerk = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(motor_jerk) ** 2)
+        # 3. Motor Velocity Cost
+        c_mvel = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(self.cassie_state.motor.velocity[:]) ** 2)
 
         # 4. Foot Dragging (Lateral)
         ML_forces = 1 - np.exp(-1e-2 * np.linalg.norm([foot_frc[1], foot_frc[4]]) ** 2)
@@ -532,23 +517,22 @@ class CassieEnv:
         c_contact = 1 if (foot_frc[2] + foot_frc[5]) <= 0 else 0
 
         # Total Cost
-        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_mjerk + cw[3] * c_drag + cw[4] * c_contact
+        cost = cw[0] * c_power + cw[1] * c_action + cw[2] * c_mvel + cw[3] * c_drag + cw[4] * c_contact
 
         # Update previous variables
         self.previous_action = action
-        self.previous_acceleration = motor_accel
         self.previous_velocity = self.cassie_state.motor.velocity[:]
 
         if self.writer is not None and self.debug and not self.test:
             # log episode reward to tensorboard
             self.writer.add_scalar('env_cost/action_change', c_action, self.total_steps)
-            self.writer.add_scalar('env_cost/c_mjerk', c_mjerk, self.total_steps)
+            self.writer.add_scalar('env_cost/c_mvel', c_mvel, self.total_steps)
             self.writer.add_scalar('env_cost/power', c_power, self.total_steps)
             self.writer.add_scalar('env_cost/drag', c_drag, self.total_steps)
             self.writer.add_scalar('env_cost/contact', c_contact, self.total_steps)
         elif self.writer is None and self.debug:
-            print('Costs:\t Action Change [{:.3f}], Motor Jerk [{:.3f}], Power [{:.3f}], Drag [{:.3f}], '
-                  'Foot Contact[{:.3f}]\n'.format(c_action, c_mjerk, c_power, c_drag, c_contact))
+            print('Costs:\t Action Change [{:.3f}], Motor Vel [{:.3f}], Power [{:.3f}], Drag [{:.3f}], '
+                  'Foot Contact[{:.3f}]\n'.format(c_action, c_mvel, c_power, c_drag, c_contact))
 
         return cost
 
