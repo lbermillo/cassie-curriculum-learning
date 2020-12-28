@@ -373,7 +373,7 @@ class CassieEnv:
 
         self.sim.set_qpos(init_height)
 
-    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.15, 0.25, 0.15, 0.2)):
+    def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.2, 0.2, 0.2, 0.2, 0.2)):
         # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation)
 
         left_foot_pos  = foot_pos[:3]
