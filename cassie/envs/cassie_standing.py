@@ -145,6 +145,10 @@ class CassieEnv:
             target_D = self.D + (action[20:]   * min(self.D))
             action   = action[:10]
 
+        # TODO: Filter action to only accept changes above 0.1 threshold
+        # action = [action[i] if abs(action[i] - self.previous_action[i]) > 0.1
+        #           else self.previous_action[i] for i in range(len(action))]
+
         # Create Target Action
         target = (action + self.offset) - self.motor_encoder_noise
 
@@ -313,9 +317,9 @@ class CassieEnv:
 
             # initialize qvel and get desired xyz velocities
             qvel = np.copy(self.sim.qvel())
-            x_speed = random.randint(int(self.min_speed[0] * 10), int(self.max_speed[0] * 10)) / 10.
-            y_speed = random.randint(int(self.min_speed[1] * 10), int(self.max_speed[1] * 10)) / 10.
-            z_speed = random.randint(int(self.min_speed[2] * 10), int(self.max_speed[2] * 10)) / 10.
+            x_speed = random.uniform(self.min_speed[0], self.max_speed[0])
+            y_speed = random.uniform(self.min_speed[0], self.max_speed[0])
+            z_speed = random.uniform(self.min_speed[0], self.max_speed[0])
 
             if use_phase and np.random.rand() < reset_ratio:
                 # get the corresponding state from the reference trajectory for the current phase
@@ -485,8 +489,8 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, qvel, cw=(0., 0., 0., 0.15, 0.3)):
-        cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
+    def compute_cost(self, action, foot_frc, qvel, cw=(0.1, 0., 0., 0.15, 0.3)):
+        # cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
         power_estimate, power_info = estimate_power(self.cassie_state.motor.torque[:10],
@@ -498,14 +502,14 @@ class CassieEnv:
         cot_y = power_estimate / (np.sum(self.mass) * abs(qvel[1])) if abs(qvel[1]) > 0 else power_estimate
 
         cot = 0.5 * cot_x + 0.5 * cot_y
-        c_power = 1. - np.exp(-5e-6 * cot ** 2)
+        c_power = 1. - np.exp(-5e-5 * cot ** 2)
 
         # 2. Action Cost
-        action_diff = np.subtract(self.previous_action, action)
-        c_action = 1 - np.exp(-(10 * cost_coeff) * np.linalg.norm(action_diff) ** 2)
+        action_diff = np.subtract(self.previous_action[:10], action[:10])
+        c_action = 1 - np.exp(-250 * np.sum(action_diff) ** 2)
 
-        # 3. Motor Velocity Cost
-        c_mvel = 1 - np.exp(-(5 * cost_coeff) * np.linalg.norm(self.cassie_state.motor.velocity[:]) ** 2)
+        # 3. Motor Velocity Cost (Proportional Motor Vel to Pelvis Vel)
+        c_mvel = 1 - np.exp(-100 * np.linalg.norm(self.cassie_state.motor.velocity[:]) ** 2)
 
         # 4. Foot Dragging (Lateral)
         ML_forces = 1 - np.exp(-1e-2 * np.linalg.norm([foot_frc[1], foot_frc[4]]) ** 2)
