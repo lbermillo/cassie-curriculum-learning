@@ -88,7 +88,7 @@ class CassieEnv:
         # self.P = np.array([20., 20., 44., 80., 25., 20., 20., 44., 80., 25.])
         # self.D = np.array([10., 10., 8.0, 5.0, 5.0, 10., 10., 8.0, 5.0, 5.0])
 
-        self.strength_level = (1. / 6.) + 1e-6
+        self.strength_level = 1. / 6.
 
         self.P = np.array([30., 10., 88., 96., 40.,
                            30., 10., 88., 96., 40., ])
@@ -292,6 +292,9 @@ class CassieEnv:
         return state, reward, done, {}
 
     def reset(self, reset_ratio=0, use_phase=False):
+        # update strength
+        self.strength_level = self.strength_level + (1e-6 * self.timestep) if self.strength_level < 1 / 3 else 1 / 3
+
         # reset variables
         self.timestep = 0
         self.sim.full_reset()
@@ -299,8 +302,6 @@ class CassieEnv:
         self.previous_action = np.zeros(self.action_space.shape[0])
         self.previous_velocity = self.cassie_state.motor.velocity[:]
         self.previous_acceleration = np.zeros(len(self.previous_velocity))
-
-        self.strength_level = self.strength_level - 1e-6 if self.strength_level < 1/3 else 1/3
 
         self.P = np.array([30., 10., 88., 96., 40.,
                            30., 10., 88., 96., 40., ]) * self.strength_level
