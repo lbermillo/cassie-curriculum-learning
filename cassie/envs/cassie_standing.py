@@ -303,9 +303,9 @@ class CassieEnv:
         self.strength_level = self.strength_level - 1e-6 if self.strength_level < 1/3 else 1/3
 
         self.P = np.array([30., 10., 88., 96., 40.,
-                           30., 10., 88., 96., 40., ]) / self.strength_level
+                           30., 10., 88., 96., 40., ]) * self.strength_level
         self.D = np.array([3.0, 1.0, 8.0, 9.6, 4.0,
-                           3.0, 1.0, 8.0, 9.6, 4.0, ]) / self.strength_level
+                           3.0, 1.0, 8.0, 9.6, 4.0, ]) * self.strength_level
 
         # reset target variables
         self.target_orientation = np.zeros(3)
