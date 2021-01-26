@@ -88,10 +88,12 @@ class CassieEnv:
         # self.P = np.array([20., 20., 44., 80., 25., 20., 20., 44., 80., 25.])
         # self.D = np.array([10., 10., 8.0, 5.0, 5.0, 10., 10., 8.0, 5.0, 5.0])
 
-        self.P = np.array([30., 10., 100., 80., 40.,
-                           30., 10., 100., 80., 40., ]) / 4
-        self.D = np.array([3.0, 1.0, 10.0, 8.0, 4.0,
-                           3.0, 1.0, 10.0, 8.0, 4.0, ]) / 4
+        self.strength_level = (1. / 6.) + 1e-6
+
+        self.P = np.array([30., 10., 88., 96., 40.,
+                           30., 10., 88., 96., 40., ])
+        self.D = np.array([3.0, 1.0, 8.0, 9.6, 4.0,
+                           3.0, 1.0, 8.0, 9.6, 4.0, ])
 
         # TODO: PD gain CL multiplier, incrementally increase multiplier (make motors stiffer) as training goes on
 
@@ -117,12 +119,9 @@ class CassieEnv:
         self.pos_idx = [7, 8, 9, 14, 20, 21, 22, 23, 28, 34]
         self.vel_idx = [6, 7, 8, 12, 18, 19, 20, 21, 25, 31]
 
-        # TODO: learn_PD
         # Set number of actions based on PD gains are learned or not
         # (30 if learning PD gains = 10 jont positions + 2 gains * 10 joints)
         num_actions = 30 if self.learn_PD else 10
-
-        # num_actions = 6 # TODO: Removing policy control of hip yaw and hip roll
 
         # Action and velocity tracking for large changes
         self.previous_action = np.zeros(num_actions)
@@ -131,7 +130,7 @@ class CassieEnv:
 
         # Initialize Observation and Action Spaces
         self.observation_space = np.zeros(len(self.get_full_state()))
-        self.action_space = gym.spaces.Box(-np.pi / 2. * np.ones(num_actions), np.pi / 2. * np.ones(num_actions), dtype=np.float32)
+        self.action_space = gym.spaces.Box(-1. * np.ones(num_actions), 1. * np.ones(num_actions), dtype=np.float32)
 
         # Used for eval
         self.test = False
@@ -151,8 +150,6 @@ class CassieEnv:
 
         # TODO: Add noise to gains either here or in reset fn
         if self.learn_PD:
-            # target_P = self.P + (action[10:20] * min(self.P))
-            # target_D = self.D + (action[20:]   * min(self.D))
             target_P = self.P + (action[10:20] * self.P)
             target_D = self.D + (action[20:]   * self.D)
             action   = action[:10]
@@ -273,14 +270,17 @@ class CassieEnv:
         height_in_bounds = self.fall_threshold < self.sim.qpos()[2] < self.max_height
 
         # Current Reward
-        if alive_bounds:
-            if height_in_bounds:
-                reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, qvel)
-            else:
-                fall_cost = np.exp(-10 * (qpos[2] - self.target_height) ** 2) - 1
-                reward = 0.75 * fall_cost - self.compute_cost(action, foot_grf, qvel, cw=(0.25, 0., 0., 0., 0.))
-        else:
-            reward = -10
+        # if alive_bounds:
+        #     if height_in_bounds:
+        #         reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, qvel)
+        #     else:
+        #         fall_cost = np.exp(-10 * (qpos[2] - self.target_height) ** 2) - 1
+        #         reward = 0.75 * fall_cost - self.compute_cost(action, foot_grf, qvel, cw=(0.25, 0., 0., 0., 0.))
+        # else:
+        #     reward = -10
+
+        reward = self.compute_reward(qpos, qvel, foot_pos, foot_grf) - self.compute_cost(action, foot_grf, qvel) \
+            if alive_bounds else -self.timestep
 
         # Done Condition
         done = not alive_bounds or reward < self.reward_cutoff
@@ -299,6 +299,13 @@ class CassieEnv:
         self.previous_action = np.zeros(self.action_space.shape[0])
         self.previous_velocity = self.cassie_state.motor.velocity[:]
         self.previous_acceleration = np.zeros(len(self.previous_velocity))
+
+        self.strength_level = self.strength_level - 1e-6 if self.strength_level < 1/3 else 1/3
+
+        self.P = np.array([30., 10., 88., 96., 40.,
+                           30., 10., 88., 96., 40., ]) / self.strength_level
+        self.D = np.array([3.0, 1.0, 8.0, 9.6, 4.0,
+                           3.0, 1.0, 8.0, 9.6, 4.0, ]) / self.strength_level
 
         # reset target variables
         self.target_orientation = np.zeros(3)
@@ -396,7 +403,7 @@ class CassieEnv:
         self.sim.set_qpos(init_height)
 
     def compute_reward(self, qpos, qvel, foot_pos, foot_grf, rw=(0.25, 0.25, 0., 0.25, 0.25)):
-        # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation)
+        # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation, GRF)
 
         left_foot_pos  = foot_pos[:3]
         right_foot_pos = foot_pos[3:]
@@ -415,7 +422,7 @@ class CassieEnv:
 
         r_pose = np.exp(-pelvis_orient_coeff * orient_error ** 2)
 
-        # 2. CoM Position Modulation TODO: Try w/out height reward, just penalize for falling below threshold
+        # 2. CoM Position Modulation
         com_pos_coeff = [250, 500, 100]
 
         xy_target_pos = np.array([0.5 * (foot_pos[0] + foot_pos[3]),
@@ -428,11 +435,21 @@ class CassieEnv:
         r_com_pos = 0.5 * y_com_pos + 0.3 * x_com_pos + 0.2 * z_com_pos
 
         # 3. CoM Velocity Modulation (Commanded XY)
-        x_target_vel = np.exp(-100 * np.linalg.norm(qvel[0] - self.target_speed[0]) ** 2)
-        y_target_vel = np.exp(-50 * np.linalg.norm(qvel[1] - self.target_speed[1]) ** 2)
-        z_target_vel = np.exp(-25 * np.linalg.norm(qvel[2] - self.target_speed[2]) ** 2)
+        if np.sum(self.target_speed) == 0:
+            # Derive horizontal target speed from CP formula and vertical target speed should be 0
+            # where x_cp = x_com + x_vel * sqrt(z / 9.81) and y_cp can be captured using the same formula
 
-        r_com_vel = 0.75 * x_target_vel + 0.2 * y_target_vel + 0.05 * z_target_vel
+            xy_target_speed  = (xy_target_pos - [qpos[0], qpos[1]]) / np.sqrt(qpos[2] / 9.81)
+            com_target_speed = np.concatenate((xy_target_speed, [0]))
+
+            r_com_vel = np.exp(-np.linalg.norm(qvel[:3] - com_target_speed) ** 2) if (foot_grf[2] + foot_grf[5]) > 0 \
+                else np.exp(-np.linalg.norm(qvel[2] - com_target_speed[2]) ** 2)
+        else:
+            x_target_vel = np.exp(-100 * np.linalg.norm(qvel[0] - self.target_speed[0]) ** 2)
+            y_target_vel = np.exp(-50  * np.linalg.norm(qvel[1] - self.target_speed[1]) ** 2)
+            z_target_vel = np.exp(-25  * np.linalg.norm(qvel[2] - self.target_speed[2]) ** 2)
+
+            r_com_vel = 0.75 * x_target_vel + 0.2 * y_target_vel + 0.05 * z_target_vel
 
         # 4. Foot Placement
         foot_placement_coeff = 1e3
@@ -457,7 +474,7 @@ class CassieEnv:
         l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
         r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
 
-        r_foot_placement = 0.6 * r_foot_width + 0.25 * r_foot_neutral + 0.15 * r_feet_align\
+        r_foot_placement = 0.6 * r_foot_width + 0.3 * r_foot_neutral + 0.1 * r_feet_align\
             if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
         # 5. Foot/Pelvis Orientation TODO: Fix for gazing, feet needs to be detached from pelvis
@@ -507,7 +524,7 @@ class CassieEnv:
 
         return reward
 
-    def compute_cost(self, action, foot_frc, qvel, cw=(0.1, 0., 0., 0.25, 0.3)):
+    def compute_cost(self, action, foot_frc, qvel, cw=(0.1, 0., 0., 0.2, 0.3)):
         # cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
@@ -518,7 +535,7 @@ class CassieEnv:
         # calculate cost of transport in the XY
         # cot = power_estimate / (np.sum(self.mass) * abs(qvel[0])) if abs(qvel[0]) > 0 else power_estimate
 
-        c_power = 1. - np.exp(-(1e-5 if np.sum(qvel[:2] > 0.1) else 1e-1) * power_estimate ** 2)
+        c_power = 1. - np.exp(-1e-3 * power_estimate ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action[:10], action[:10])
