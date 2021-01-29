@@ -206,11 +206,6 @@ class Agent:
                 # get evaluation score
                 score = self.evaluate(env, render=False, max_steps=max_steps, reset_ratio=reset_ratio, use_phase=use_phase)
 
-                # update reward termination
-                if self.tc is not None:
-                    # decay, for growth just remove "tc[0] -" from the first term
-                    env.reward_cutoff = max(self.tc[0] - (self.total_steps * self.tc[0]) / training_steps, self.tc[1])
-
                 if self.writer:
                     # log eval rewards to tensorboard
                     self.writer.add_scalar('reward/test', score, episode)
@@ -225,5 +220,8 @@ class Agent:
                         self.model.save(directory, filename)
 
             episode += 1
+
+            # TODO: update discount factor proportional to strength index from env
+            self.model.discount = self.model.discount - (1e-7 * episode_steps) if self.model.discount > 0.5 else 0.5
 
 

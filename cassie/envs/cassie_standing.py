@@ -154,12 +154,8 @@ class CassieEnv:
             target_D = self.D + (action[20:]   * self.D)
             action   = action[:10]
 
-        # TODO: Filter action to only accept changes above 0.1 threshold
-        # action = [action[i] if abs(action[i] - self.previous_action[i]) > 0.1
-        #           else self.previous_action[i] for i in range(len(action))]
-
         # Create Target Action
-        target = (action + self.offset) - self.motor_encoder_noise
+        target = (1.25 * action + self.offset) - self.motor_encoder_noise
 
         foot_pos = np.zeros(6)
         self.sim.foot_pos(foot_pos)
@@ -292,8 +288,8 @@ class CassieEnv:
         return state, reward, done, {}
 
     def reset(self, reset_ratio=0, use_phase=False):
-        # update strength
-        self.strength_level = self.strength_level + (1e-6 * self.timestep) if self.strength_level < 1 / 3 else 1 / 3
+        # update strength and TODO: discount factor
+        self.strength_level = self.strength_level + (6e-8 * self.timestep) if self.strength_level < 1 / 3 and not self.test else 1 / 3
 
         # reset variables
         self.timestep = 0
