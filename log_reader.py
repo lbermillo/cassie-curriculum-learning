@@ -16,15 +16,12 @@ from cassie.cassiemujoco.cassieUDP import *
 from cassie.cassiemujoco.cassiemujoco_ctypes import *
 
 
-def plot_motor_data(motor1, motor2, label1, label2, title=None, xlabel=None, ylabel=None):
-    plt.plot(motor1, label=label1)
-    plt.plot(motor2, label=label2)
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
+def plot_motor_data(ax, motor1, motor2, label1, label2, title=None, xlabel=None, ylabel=None):
+    ax.plot(motor1, label=label1)
+    ax.plot(motor2, label=label2)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
 
 
 parser = argparse.ArgumentParser(description='Cassie Curriculum Learning')
@@ -44,51 +41,65 @@ if __name__ == '__main__':
     log_data = pickle.load(infile)
     infile.close()
 
-    l_hip_roll, l_hip_yaw, l_hip_pitch, l_knee, l_toe = [], [], [], [], []
-    r_hip_roll, r_hip_yaw, r_hip_pitch, r_knee, r_toe = [], [], [], [], []
+    # l_hip_roll, l_hip_yaw, l_hip_pitch, l_knee, l_toe = [], [], [], [], []
+    # r_hip_roll, r_hip_yaw, r_hip_pitch, r_knee, r_toe = [], [], [], [], []
+
+    l_vel, r_vel, l_torque, r_torque = [], [], [], []
+    l_action = [log_data['output'][i][0] for i in range(len(log_data['output']))]
+    r_action = [log_data['output'][i][5] for i in range(len(log_data['output']))]
 
     # l_hip_roll, l_hip_yaw, l_hip_pitch, l_knee, l_toe, \
     #     r_hip_roll, r_hip_yaw, r_hip_pitch, r_knee, r_toe = np.array(log_data['output']).T
 
-    # for state in log_data['state']:
-    #     l_hip_roll.append(state.motor.velocity[0])
-    #     l_hip_yaw.append(state.motor.velocity[1])
-    #     l_hip_pitch.append(state.motor.velocity[2])
-    #     l_knee.append(state.motor.velocity[3])
-    #     l_toe.append(state.motor.velocity[4])
+    for state in log_data['state']:
+        l_vel.append(state.motor.velocity[0])
+        l_torque.append(state.motor.torque[0])
+        # l_hip_yaw.append(state.motor.velocity[1])
+        # l_hip_pitch.append(state.motor.velocity[2])
+        # l_knee.append(state.motor.velocity[3])
+        # l_toe.append(state.motor.velocity[4])
+
+        r_vel.append(state.motor.velocity[5])
+        r_torque.append(state.motor.torque[5])
+        # r_hip_yaw.append(state.motor.velocity[6])
+        # r_hip_pitch.append(state.motor.velocity[7])
+        # r_knee.append(state.motor.velocity[8])
+        # r_toe.append(state.motor.velocity[9])
+
+    f, (ax1, ax2, ax3) = plt.subplots(3, 1, sharex='all')
+    plot_motor_data(ax3, l_vel, r_vel, 'l_hip_roll', 'r_hip_roll', 'Velocity Output', 'Time', 'Velocity')
+    plot_motor_data(ax2, l_torque, r_torque, 'l_hip_roll', 'r_hip_roll', 'Torque Output', 'Time', 'Torque')
+    plot_motor_data(ax1, l_action, r_action, 'l_hip_roll', 'r_hip_roll', 'Policy Output', 'Time', 'Action')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # r_buffer = ReplayMemory(1e4)
+    # hardware_state  = log_data['input']
+    # hardware_action = log_data['output']
     #
-    #     r_hip_roll.append(state.motor.velocity[5])
-    #     r_hip_yaw.append(state.motor.velocity[6])
-    #     r_hip_pitch.append(state.motor.velocity[7])
-    #     r_knee.append(state.motor.velocity[8])
-    #     r_toe.append(state.motor.velocity[9])
-
-    r_buffer = ReplayMemory(1e4)
-    hardware_state  = log_data['input']
-    hardware_action = log_data['output']
-
-    # Prepare model
-    env = cassie_standing.CassieEnv(simrate=args.simrate, debug=True)
-
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
-    max_action = env.action_space.high[0]
-
-    # load policy
-    checkpoint = torch.load(args.load)
-
-    policy = Actor(state_dim, action_dim, max_action)
-    policy.load_state_dict(checkpoint['actor'])
-    policy.eval()
-
-    episode_reward = 0
-    steps = 0
-    sim2real_diff = []
-
-    full_state = log_data['state']
-
-    # TODO: Rebuild states for qpos
-    print(full_state[0].motor.position[:3])
+    # # Prepare model
+    # env = cassie_standing.CassieEnv(simrate=args.simrate, debug=True)
+    #
+    # state_dim = env.observation_space.shape[0]
+    # action_dim = env.action_space.shape[0]
+    # max_action = env.action_space.high[0]
+    #
+    # # load policy
+    # checkpoint = torch.load(args.load)
+    #
+    # policy = Actor(state_dim, action_dim, max_action)
+    # policy.load_state_dict(checkpoint['actor'])
+    # policy.eval()
+    #
+    # episode_reward = 0
+    # steps = 0
+    # sim2real_diff = []
+    #
+    # full_state = log_data['state']
+    #
+    # # TODO: Rebuild states for qpos
+    # print(full_state[0].motor.position[:3])
 
     # pelvis_x, pelvis_y, pelvis_z = cassie_state.pelvis.position[:]
     # pelvis_qw, pelvis_qx, pelvis_py, pelvis_pz = cassie_state.pelvis.orientation[:]

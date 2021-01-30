@@ -4,7 +4,7 @@ import random
 
 import numpy as np
 import torch
-from rl.agents import TD3
+from rl.agents import TD3, SAC
 from cassie.envs import cassie_standing, cassie_walking, cassie_jumping
 from torch.utils.tensorboard import SummaryWriter
 
@@ -84,8 +84,8 @@ if __name__ == '__main__':
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
                         help='Name of algorithm to use [TD3, SAC] (default: TD3)')
-    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
-                        help='Size of the 2 hidden layers (default=[256, 256])')
+    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 128),
+                        help='Size of the 2 hidden layers (default=[256, 128])')
     parser.add_argument('--alr', type=float, default=5e-5,
                         help='Actor learning rate (default=5e-5)')
     parser.add_argument('--clr', type=float, default=8e-5,
@@ -181,26 +181,33 @@ if __name__ == '__main__':
     max_action = env.action_space.high[0]
 
     # initialize agent
-    agent = TD3.Agent(args.algo,
-                      state_dim,
-                      action_dim,
-                      max_action,
-                      hidden_dim=args.hidden,
-                      actor_lr=args.alr,
-                      critic_lr=args.clr,
-                      discount=args.discount,
-                      tau=args.tau,
-                      policy_noise=args.policy_noise,
-                      noise_clip=args.noise_clip,
-                      random_action_steps=args.start_steps,
-                      use_mirror_loss=args.mirror_loss,
-                      capacity=args.buffer,
-                      batch_size=args.batch,
-                      policy_update_freq=args.update_fq,
-                      chkpt_pth=args.load,
-                      init_weights=args.network_init,
-                      termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
-                      writer=writer)
+    if args.algo.lower() == 'td3':
+        agent = TD3.Agent(args.algo,
+                          state_dim,
+                          action_dim,
+                          max_action,
+                          hidden_dim=args.hidden,
+                          actor_lr=args.alr,
+                          critic_lr=args.clr,
+                          discount=args.discount,
+                          tau=args.tau,
+                          policy_noise=args.policy_noise,
+                          noise_clip=args.noise_clip,
+                          random_action_steps=args.start_steps,
+                          use_mirror_loss=args.mirror_loss,
+                          capacity=args.buffer,
+                          batch_size=args.batch,
+                          policy_update_freq=args.update_fq,
+                          chkpt_pth=args.load,
+                          init_weights=args.network_init,
+                          termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
+                          writer=writer)
+    elif args.algo.lower() == 'sac':
+        agent = SAC.Agent(args.algo,
+                          state_dim,
+                          env.action_space,
+                          max_action,
+                          writer=writer)
 
     # run training
     agent.train(env,

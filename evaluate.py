@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
+import torch
 import argparse
 
-import torch
+from rl.agents import TD3, SAC
 from cassie.envs import cassie_standing, cassie_walking
-from rl.agents import TD3
 
 # use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,12 +95,21 @@ if __name__ == "__main__":
     max_action = env.action_space.high[0]
 
     # initialize agent
-    agent = TD3.Agent(args.algo,
-                      state_dim,
-                      action_dim,
-                      max_action,
-                      hidden_dim=args.hidden,
-                      chkpt_pth=args.load, )
+    if args.algo.lower() == 'td3':
+        agent = TD3.Agent(args.algo,
+                          state_dim,
+                          action_dim,
+                          max_action,
+                          hidden_dim=args.hidden,
+                          chkpt_pth=args.load, )
+
+    if args.algo.lower() == 'sac':
+        agent = SAC.Agent(args.algo,
+                          state_dim,
+                          env.action_space,
+                          max_action,
+                          hidden_dim=args.hidden,
+                          chkpt_pth=args.load, )
 
     agent.evaluate(env,
                    eval_eps=args.eval_episodes,

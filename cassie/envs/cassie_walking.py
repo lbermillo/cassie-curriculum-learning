@@ -475,6 +475,8 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/com_vel', r_com_vel, self.total_steps)
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
+            self.writer.add_scalar('env_reward/distance', r_dist, self.total_steps)
+
         elif self.writer is None and self.debug:
             print('[{:3}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], DIST[{:.3f}]]'.format(self.timestep,
                                                                                                                             r_pose,

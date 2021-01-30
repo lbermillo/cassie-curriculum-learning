@@ -1,29 +1,28 @@
 import time
-
-import numpy as np
 import torch
+import numpy as np
 
-from rl.algorithms.TD3 import TD3
+from rl.algorithms.SAC import SAC
 from rl.utils.ReplayMemory import ReplayMemory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Agent:
-    def __init__(self, algorithm, state_dim, action_dim, max_action, hidden_dim=(256, 256), actor_lr=3e-4, critic_lr=3e-4,
+    def __init__(self, algorithm, state_dim, action_space, max_action, hidden_dim=(256, 128), actor_lr=3e-4, critic_lr=3e-4,
                  discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4, use_mirror_loss=True,
                  capacity=1e6, batch_size=100, policy_update_freq=2, termination_curriculum=None, chkpt_pth=None,
-                 init_weights=True, writer=None):
+                 init_weights=True, writer=None, alpha=0.2, policy_type="Gaussian", target_update_interval=1,
+                 automatic_entropy_tuning=False):
 
-        self.action_dim = action_dim
+        self.action_dim = action_space.shape[0]
         self.max_action = float(max_action)
         self.use_mirror_loss = use_mirror_loss
         self.random_action_steps = random_action_steps
 
-        if algorithm.lower() == 'td3':
-            # initialize TD3 model
-            self.model = TD3(state_dim, action_dim, max_action, hidden_dim, actor_lr, critic_lr,
-                             discount, tau, policy_noise, noise_clip, device=device, init_weights=init_weights)
+        # initialize SAC model
+        self.model = SAC(state_dim, action_space, discount, tau, alpha, policy_type, target_update_interval,
+                         automatic_entropy_tuning, hidden_dim, critic_lr, actor_lr, device)
 
         # load existing model when provided
         if chkpt_pth is not None:
@@ -41,8 +40,9 @@ class Agent:
         # initialize policy update frequency
         self.policy_update_freq = policy_update_freq
 
-        # initialize counter to track total number of steps
+        # initialize counter to track total number of steps and updates
         self.total_steps = 0
+        self.total_updates = 0
 
         # initialize writer for logging
         self.writer = writer
@@ -50,19 +50,12 @@ class Agent:
         # initialize parameters for Termination Curriculum
         self.tc = termination_curriculum
 
-    def policy(self, state, expl_noise=0.1):
+    def policy(self, state):
         # select action randomly for the given steps
         if self.total_steps < self.random_action_steps:
             return np.random.uniform(-self.max_action, self.max_action, size=self.action_dim)
 
-        # get action from model's current policy
-        action = self.model.act(state)
-
-        # add noise to action
-        action += np.random.normal(0, self.max_action * expl_noise, size=action.shape[0])
-
-        # returned clipped action
-        return np.clip(action, -self.max_action, self.max_action)
+        return self.model.act(state, evaluate=False)
 
     def sample_buffer(self, batch_size):
         batch = self.replay_buffer.sample(batch_size)
@@ -76,41 +69,27 @@ class Agent:
 
         return state, action, next_state, reward, done
 
-    def update(self, steps):
+    def update(self, num_updates=1):
         # skip update if the replay buffer is less than the batch size
         if len(self.replay_buffer) < self.batch_size:
             return
 
         # start the updates
-        for step in range(steps):
-
+        for step in range(num_updates):
             # sample experiences from replay buffer
             state, action, next_state, reward, done = self.sample_buffer(self.batch_size)
 
-            # compute target and current Q values
-            current_Q1, current_Q2, target_Q = self.model.compute_critic_values(state, action, next_state, reward,
-                                                                                done)
+            # Update parameters of all the networks
+            critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = self.model.update_parameters(
+                state, action, next_state, reward, done, updates=self.total_updates)
 
-            # update critic by minimizing the loss
-            critic_loss = self.model.update_critic(current_Q1, current_Q2, target_Q)
+            self.total_updates += 1
 
-            if self.writer:
-                # log episode reward to tensorboard
-                self.writer.add_scalar('loss/critic', critic_loss, self.total_steps)
+        if self.writer:
+            self.writer.add_scalar('loss/critic', critic_1_loss, self.total_steps)
+            self.writer.add_scalar('loss/actor',  policy_loss,   self.total_steps)
 
-            # delay updates for actor and target networks
-            if step % self.policy_update_freq == 0:
-                # update actor policy using the sampled policy gradient
-                actor_loss = self.model.update_actor(state)
-
-                if self.writer:
-                    # log episode reward to tensorboard
-                    self.writer.add_scalar('loss/actor', actor_loss, self.total_steps)
-
-                # update target networks
-                self.model.update_target_networks()
-
-    def collect(self, env, max_steps, noise=0.1, reset_ratio=0, use_phase=False):
+    def collect(self, env, max_steps, num_updates=1, reset_ratio=0, use_phase=False):
         # set environment to training mode
         env.train()
 
@@ -125,7 +104,10 @@ class Agent:
         # collect experiences and store in replay buffer
         while step < max_steps and not done:
             # get action from policy
-            action = self.policy(state, expl_noise=noise)
+            action = self.policy(state)
+
+            # update model
+            self.update(num_updates)
 
             # execute action
             next_state, reward, done, _ = env.step(action)
@@ -149,14 +131,12 @@ class Agent:
 
     def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False,
                  reset_ratio=0, use_phase=False):
+
         # set environment to eval mode
         env.eval()
 
         # initialize reward tracker
         total_rewards = 0.
-
-        # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
-        #  orientation, pelvis height, etc.) longer
 
         for eps in range(eval_eps):
             with torch.no_grad():
@@ -191,20 +171,17 @@ class Agent:
         while self.total_steps < training_steps:
 
             # collect experiences
-            episode_steps, episode_reward = self.collect(env, max_steps, noise=expl_noise, reset_ratio=reset_ratio, use_phase=use_phase)
+            episode_steps, episode_reward = self.collect(env, max_steps, reset_ratio=reset_ratio, use_phase=use_phase)
 
             if self.writer:
                 # log episode reward to tensorboard
                 self.writer.add_scalar('reward/train', episode_reward, episode)
 
-            # update all networks after an episode
-            self.update(episode_steps)
-
             # evaluate current policy
             if episode % evaluate_interval == 0 and self.total_steps > self.batch_size:
 
                 # get evaluation score
-                score = self.evaluate(env, render=False, max_steps=max_steps, reset_ratio=reset_ratio, use_phase=use_phase)
+                score = self.evaluate(env, max_steps=max_steps, reset_ratio=reset_ratio, use_phase=use_phase)
 
                 if self.writer:
                     # log eval rewards to tensorboard
@@ -220,8 +197,5 @@ class Agent:
                         self.model.save(directory, filename)
 
             episode += 1
-
-            # TODO: update discount factor proportional to strength index from env
-            self.model.discount = self.model.discount - (1e-8 * episode_steps) if self.model.discount > 0.95 else 0.95
 
 

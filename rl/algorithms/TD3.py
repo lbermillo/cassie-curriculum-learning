@@ -1,7 +1,6 @@
 # Implementation based on Twin Delayed Deep Deterministic Policy Gradients (TD3)
 # Paper: https://arxiv.org/abs/1802.09477
 import os
-import numpy as np
 from copy import deepcopy
 
 import torch

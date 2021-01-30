@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+torch.autograd.set_detect_anomaly(True)
+
 
 def weights_init(m):
     if isinstance(m, nn.Linear):
