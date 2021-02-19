@@ -4,8 +4,8 @@ import random
 
 import numpy as np
 import torch
-from rl.agents import TD3, SAC
-from cassie.envs import cassie_standing, cassie_walking, cassie_jumping
+from rl.agents import TD3, RTD3, SAC
+from cassie.envs import cassie_standing, cassie_standingV1, cassie_walking, cassie_jumping
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -83,9 +83,9 @@ if __name__ == '__main__':
 
     # Algorithm Parameters
     parser.add_argument('--algo', action='store', default='TD3',
-                        help='Name of algorithm to use [TD3, SAC] (default: TD3)')
-    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 128),
-                        help='Size of the 2 hidden layers (default=[256, 128])')
+                        help='Name of algorithm to use [TD3, RTD3, SAC] (default: TD3)')
+    parser.add_argument('--hidden', type=int, nargs='+', default=(256, 256),
+                        help='Size of the 2 hidden layers (default=[256, 256])')
     parser.add_argument('--alr', type=float, default=5e-5,
                         help='Actor learning rate (default=5e-5)')
     parser.add_argument('--clr', type=float, default=8e-5,
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         torch.manual_seed(args.seed)
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv),
+    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walking.CassieEnv),
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
@@ -157,24 +157,28 @@ if __name__ == '__main__':
                                                            agent_id), flush_secs=60) if args.tensorboard else None
 
     # initialize environment
-    env = envs[args.env][1](training_steps=args.training_steps,
-                            simrate=args.simrate,
-                            clock_based=args.clock,
+    # env = envs[args.env][1](training_steps=args.training_steps,
+    #                         simrate=args.simrate,
+    #                         clock_based=args.clock,
+    #                         reward_cutoff=args.rcut[0],
+    #                         target_action_weight=args.tw,
+    #                         fall_threshold=args.fall_threshold,
+    #                         encoder_noise=args.encoder_noise,
+    #                         forces=args.forces,
+    #                         force_fq=args.force_fq,
+    #                         min_speed=args.min_speed,
+    #                         max_speed=args.max_speed,
+    #                         power_threshold=args.power_threshold,
+    #                         reduced_input=args.reduced_input,
+    #                         learn_PD=args.learn_PD,
+    #                         learn_command=args.learn_command,
+    #                         debug=args.debug,
+    #                         config=args.config,
+    #                         writer=writer, )
+
+    env = envs[args.env][1](simrate=args.simrate,
                             reward_cutoff=args.rcut[0],
-                            target_action_weight=args.tw,
-                            fall_threshold=args.fall_threshold,
-                            encoder_noise=args.encoder_noise,
-                            forces=args.forces,
-                            force_fq=args.force_fq,
-                            min_speed=args.min_speed,
-                            max_speed=args.max_speed,
-                            power_threshold=args.power_threshold,
-                            reduced_input=args.reduced_input,
-                            learn_PD=args.learn_PD,
-                            learn_command=args.learn_command,
-                            debug=args.debug,
-                            config=args.config,
-                            writer=writer, )
+                            debug=args.debug,)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -182,8 +186,7 @@ if __name__ == '__main__':
 
     # initialize agent
     if args.algo.lower() == 'td3':
-        agent = TD3.Agent(args.algo,
-                          state_dim,
+        agent = TD3.Agent(state_dim,
                           action_dim,
                           max_action,
                           hidden_dim=args.hidden,
@@ -202,6 +205,25 @@ if __name__ == '__main__':
                           init_weights=args.network_init,
                           termination_curriculum=args.rcut if len(args.rcut) == 2 else None,
                           writer=writer)
+    elif args.algo.lower() == 'rtd3':
+        agent = RTD3.Agent(state_dim,
+                           action_dim,
+                           max_action,
+                           hidden_dim=args.hidden,
+                           actor_lr=args.alr,
+                           critic_lr=args.clr,
+                           discount=args.discount,
+                           tau=args.tau,
+                           policy_noise=args.policy_noise,
+                           noise_clip=args.noise_clip,
+                           random_action_steps=args.start_steps,
+                           capacity=args.buffer,
+                           batch_size=args.batch,
+                           policy_update_freq=args.update_fq,
+                           max_eps_length=args.eps_steps,
+                           chkpt_pth=args.load,
+                           init_weights=args.network_init,
+                           writer=writer)
     elif args.algo.lower() == 'sac':
         agent = SAC.Agent(args.algo,
                           state_dim,

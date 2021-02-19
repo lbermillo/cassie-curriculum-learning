@@ -7,6 +7,7 @@ LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 epsilon = 1e-6
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def weights_init_(m):
     if isinstance(m, nn.Linear):
@@ -20,19 +21,19 @@ def weights_init_(m):
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, max_action, hidden_layer=(256, 256), init_weights=False):
+    def __init__(self, state_dim, action_dim, max_action, hidden_dim=(256, 256), init_weights=False):
         super(Actor, self).__init__()
 
         self.l1 = nn.Sequential(
-            nn.Linear(state_dim, hidden_layer[0]),
-            nn.Tanh()
+            nn.Linear(state_dim, hidden_dim[0]),
+            nn.ReLU()
         )
         self.l2 = nn.Sequential(
-            nn.Linear(hidden_layer[0], hidden_layer[1]),
-            nn.Tanh()
+            nn.Linear(hidden_dim[0], hidden_dim[1]),
+            nn.ReLU()
         )
         self.l3 = nn.Sequential(
-            nn.Linear(hidden_layer[1], action_dim),
+            nn.Linear(hidden_dim[1], action_dim),
             nn.Tanh()
         )
 
@@ -47,6 +48,41 @@ class Actor(nn.Module):
         x = self.l3(x) * self.max_action
 
         return x
+
+
+class LSTMActor(Actor):
+    def __init__(self, state_dim, action_dim, max_action=1, hidden_dim=(256, 256), init_weights=False):
+        super(LSTMActor, self).__init__(state_dim, action_dim, max_action, hidden_dim, init_weights)
+
+        self.lstm = nn.LSTMCell(hidden_dim[1], hidden_dim[1])
+        self.cx = torch.zeros(1, hidden_dim[1]).to(device)
+        self.hx = torch.zeros(1, hidden_dim[1]).to(device)
+        self.hidden_dim = hidden_dim
+
+    def reset_lstm_hidden_state(self, done=True):
+        if done is True:
+            self.cx = torch.zeros(1, self.hidden_dim[1]).to(device)
+            self.hx = torch.zeros(1, self.hidden_dim[1]).to(device)
+        else:
+            self.cx = self.cx.data
+            self.hx = self.hx.data
+
+    def forward(self, x, hidden_states=None):
+        x = self.l1(x)
+        x = self.l2(x)
+
+        if hidden_states is None:
+            hx, cx = self.lstm(x, (self.hx, self.cx))
+            self.hx = hx
+            self.cx = cx
+        else:
+            # hidden_states are provided during updates
+            hx, cx = self.lstm(x, hidden_states)
+
+        x = self.l3(hx) * self.max_action
+
+        return x, (hx, cx)
+
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):

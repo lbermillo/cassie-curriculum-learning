@@ -3,26 +3,24 @@ import time
 import numpy as np
 import torch
 
-from rl.algorithms.TD3 import TD3
-from rl.utils.ReplayMemory import ReplayMemory
+from rl.algorithms.RTD3 import RTD3
+from rl.utils.ReplayMemory import EpisodicMemory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class Agent:
     def __init__(self, state_dim, action_dim, max_action, hidden_dim=(256, 256), actor_lr=3e-4, critic_lr=3e-4,
-                 discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4, use_mirror_loss=True,
-                 capacity=1e6, batch_size=100, policy_update_freq=2, termination_curriculum=None, chkpt_pth=None,
-                 init_weights=True, writer=None):
+                 discount=0.99, tau=5e-3, policy_noise=0.2, noise_clip=0.5, random_action_steps=1e4, capacity=1e6,
+                 batch_size=100, policy_update_freq=2, max_eps_length=100, chkpt_pth=None, init_weights=True, writer=None):
 
         self.action_dim = action_dim
         self.max_action = float(max_action)
-        self.use_mirror_loss = use_mirror_loss
         self.random_action_steps = random_action_steps
 
-        # initialize TD3 model
-        self.model = TD3(state_dim, action_dim, max_action, hidden_dim, actor_lr, critic_lr,
-                         discount, tau, policy_noise, noise_clip, device=device, init_weights=init_weights)
+        # TODO: initialize Recurrent TD3 model
+        self.model = RTD3(state_dim, action_dim, max_action, hidden_dim, actor_lr, critic_lr, discount, tau,
+                          policy_noise, noise_clip, device=device, init_weights=init_weights)
 
         # load existing model when provided
         if chkpt_pth is not None:
@@ -33,8 +31,8 @@ class Agent:
             # DEBUG check if it stays relatively the same policy w/out random actions
             self.random_action_steps = 0
 
-        # intialize replay buffer and batch size
-        self.replay_buffer = ReplayMemory(capacity)
+        # TODO: intialize replay buffer and batch size
+        self.replay_buffer = EpisodicMemory(capacity, max_eps_length)
         self.batch_size = batch_size
 
         # initialize policy update frequency
@@ -45,9 +43,6 @@ class Agent:
 
         # initialize writer for logging
         self.writer = writer
-
-        # initialize parameters for Termination Curriculum
-        self.tc = termination_curriculum
 
     def policy(self, state, expl_noise=0.1):
         # select action randomly for the given steps
@@ -63,15 +58,14 @@ class Agent:
         # returned clipped action
         return np.clip(action, -self.max_action, self.max_action)
 
-    def sample_buffer(self, batch_size):
-        batch = self.replay_buffer.sample(batch_size)
-
-        # convert batches to tensors
-        state      = torch.FloatTensor(batch.state).to(device)
-        action     = torch.FloatTensor(batch.action).to(device)
-        next_state = torch.FloatTensor(batch.next_state).to(device)
-        reward     = torch.FloatTensor(batch.reward).to(device).unsqueeze(1)
-        done       = 1 - torch.FloatTensor(batch.done).to(device).unsqueeze(1)
+    @staticmethod
+    def unpack_experience(traj):
+        # TODO: convert batches to tensors
+        state      = torch.FloatTensor(traj.state).to(device)
+        action     = torch.FloatTensor(traj.action).to(device)
+        next_state = torch.FloatTensor(traj.next_state).to(device)
+        reward     = torch.FloatTensor(traj.reward).to(device).unsqueeze(1)
+        done       = 1 - torch.FloatTensor(traj.done).to(device).unsqueeze(1)
 
         return state, action, next_state, reward, done
 
@@ -83,41 +77,62 @@ class Agent:
         # start the updates
         for step in range(steps):
 
-            # sample experiences from replay buffer
-            state, action, next_state, reward, done = self.sample_buffer(self.batch_size)
+            # TODO: sample buffer
+            trajectories = self.replay_buffer.sample(self.batch_size)
 
-            # compute target and current Q values
-            current_Q1, current_Q2, target_Q = self.model.compute_critic_values(state, action, next_state, reward,
-                                                                                done)
+            # TODO: iterate over trajectories
+            for trajectory in trajectories:
 
-            # update critic by minimizing the loss
-            critic_loss = self.model.update_critic(current_Q1, current_Q2, target_Q)
+                state, action, next_state, reward, done = self.unpack_experience(trajectory)
 
-            if self.writer:
-                # log episode reward to tensorboard
-                self.writer.add_scalar('loss/critic', critic_loss, self.total_steps)
+                target_cx = torch.zeros(state.size()[0], self.model.actor.hidden_dim[1]).to(device)
+                target_hx = torch.zeros(state.size()[0], self.model.actor.hidden_dim[1]).to(device)
 
-            # delay updates for actor and target networks
-            if step % self.policy_update_freq == 0:
-                # update actor policy using the sampled policy gradient
-                actor_loss = self.model.update_actor(state)
+                cx = torch.zeros(state.size()[0], self.model.actor.hidden_dim[1]).to(device)
+                hx = torch.zeros(state.size()[0], self.model.actor.hidden_dim[1]).to(device)
+
+                # compute target and current Q values
+                current_Q1, current_Q2, target_Q, target_hx, target_cx = self.model.compute_critic_values(state,
+                                                                                                          action,
+                                                                                                          next_state,
+                                                                                                          reward,
+                                                                                                          done,
+                                                                                                          target_hx,
+                                                                                                          target_cx)
+
+                # update critic by minimizing the loss
+                critic_loss = self.model.update_critic(current_Q1, current_Q2, target_Q)
 
                 if self.writer:
                     # log episode reward to tensorboard
-                    self.writer.add_scalar('loss/actor', actor_loss, self.total_steps)
+                    self.writer.add_scalar('loss/critic', critic_loss, self.total_steps)
 
-                # update target networks
-                self.model.update_target_networks()
+                # delay updates for actor and target networks
+                if step % self.policy_update_freq == 0:
+                    # update actor policy using the sampled policy gradient
+                    actor_loss, hx, cx = self.model.update_actor(state, hx, cx)
+
+                    if self.writer:
+                        # log episode reward to tensorboard
+                        self.writer.add_scalar('loss/actor', actor_loss, self.total_steps)
+
+                    # update target networks
+                    self.model.update_target_networks()
 
     def collect(self, env, max_steps, noise=0.1, reset_ratio=0, use_phase=False):
+        # set environment to training mode
+        env.train()
 
         # initialize episode reward tracker for logging
         episode_reward = 0
 
         # reset environment
-        state = env.reset()
+        state = env.reset(reset_ratio=reset_ratio, use_phase=use_phase)
         done = False
         step = 0
+
+        # TODO: reset lstm hidden states
+        self.model.reset_lstm_hidden_state()
 
         # collect experiences and store in replay buffer
         while step < max_steps and not done:
@@ -146,21 +161,24 @@ class Agent:
 
     def evaluate(self, env, eval_eps=10, max_steps=100, render=False, dt=0.033, speedup=1, print_stats=False,
                  reset_ratio=0, use_phase=False):
+        # set environment to eval mode
+        env.eval()
 
         # initialize reward tracker
         total_rewards = 0.
 
-        # TODO: in TSCL, find the worse reward from this eval and let the agent train on these inputs (speed, phase,
-        #  orientation, pelvis height, etc.) longer
-
         for eps in range(eval_eps):
             with torch.no_grad():
                 episode_reward = 0
-                state = env.reset()
+                state = env.reset(reset_ratio=reset_ratio, use_phase=use_phase)
                 done = False
                 step = 0
 
+                # TODO: reset lstm hidden states
+                self.model.reset_lstm_hidden_state()
+
                 while step < max_steps and not done:
+
                     action = self.model.act(state)
                     state, reward, done, _ = env.step(action)
                     episode_reward += reward

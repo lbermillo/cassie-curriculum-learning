@@ -44,7 +44,6 @@ class CassieEnv:
         self.power_threshold = power_threshold
         self.reduced_input = reduced_input
         self.learn_PD = learn_PD
-        self.learn_command = learn_command
         self.debug = debug
         self.writer = writer
 
@@ -81,12 +80,9 @@ class CassieEnv:
         self.timestep = 0
         self.total_steps = 0
 
-        self.strength_level = 1. / 4.
-
-        self.P = np.array([30., 10., 88., 96., 40.,
-                           30., 10., 88., 96., 40., ])
-        self.D = np.array([3.0, 1.0, 8.0, 9.6, 4.0,
-                           3.0, 1.0, 8.0, 9.6, 4.0, ])
+        # TODO: Initial Actions
+        self.P = np.array([100., 100., 88., 96., 50., 100., 100., 88., 96., 50.])
+        self.D = np.array([10.0, 10.0, 8.0, 9.6, 5.0, 10.0, 10.0, 8.0, 9.6, 5.0])
 
         self.u = pd_in_t()
 
@@ -141,8 +137,8 @@ class CassieEnv:
 
         # TODO: Add noise to gains either here or in reset fn
         if self.learn_PD:
-            target_P = self.P + (action[10:20] * self.P)
-            target_D = self.D + (action[20:]   * self.D)
+            target_P = self.P + (action[10:20] * (self.P / 2.))
+            target_D = self.D + (action[20:]   * (self.D / 2.))
             action   = action[:10]
 
         # Create Target Action
@@ -180,32 +176,8 @@ class CassieEnv:
 
     def step(self, action):
 
-        # TODO: hold pelvis in place
-        # self.sim.hold()
-
-        # TODO: release pelvis
-        # self.sim.release()
-
-        if self.timestep % random.randint(1, self.force_fq) == 0:
-            if np.sum(self.target_speed) == 0 and np.all(np.abs(self.sim.qvel()[:2]) < 0.2):
-                # Apply perturbations to the pelvis in random directions
-                self.sim.apply_force([random.uniform(-self.forces[0], self.forces[0]),
-                                      random.uniform(-self.forces[1], self.forces[1]),
-                                      random.uniform(-self.forces[2], self.forces[2]),
-                                      0,
-                                      0])
-            else:
-                force_dir = np.sign(self.target_speed)
-
-                # Apply perturbations to the pelvis in the direction of the pelvis
-                self.sim.apply_force([force_dir[0] * self.forces[0],
-                                      force_dir[1] * self.forces[1],
-                                      force_dir[2] * self.forces[2],
-                                      0,
-                                      0])
-
         # random changes to target yaw of the pelvis
-        if np.random.rand() < 0.1 and self.learn_command:
+        if np.random.rand() < 0.1:
             self.target_orientation += np.random.uniform(-self.max_orient, self.max_orient, size=3)
 
         # simulating delays
@@ -246,7 +218,6 @@ class CassieEnv:
 
         # Create lists for foot positions, velocities, and forces
         foot_pos = np.append(self.l_foot_pos, self.r_foot_pos)
-        foot_vel = np.append(self.l_foot_vel, self.r_foot_vel)
         foot_grf = np.append(self.l_foot_frc, self.r_foot_frc)
 
         # Current State
@@ -268,9 +239,6 @@ class CassieEnv:
         return state, reward, done, {}
 
     def reset(self, reset_ratio=0, use_phase=False):
-        # update strength
-        self.strength_level = self.strength_level + (8e-8 * self.timestep) if self.strength_level < 1 / 2 and not self.test else 1 / 2
-
         # reset variables
         self.timestep = 0
         self.sim.full_reset()
@@ -279,19 +247,11 @@ class CassieEnv:
         self.previous_velocity = self.cassie_state.motor.velocity[:]
         self.previous_acceleration = np.zeros(len(self.previous_velocity))
 
-        self.P = np.array([30., 10., 88., 96., 40.,
-                           30., 10., 88., 96., 40., ]) * self.strength_level
-        self.D = np.array([3.0, 1.0, 8.0, 9.6, 4.0,
-                           3.0, 1.0, 8.0, 9.6, 4.0, ]) * self.strength_level
-
         # reset target variables
         self.target_orientation = np.zeros(3)
-        if self.learn_command:
-            self.target_speed[0] = random.uniform(self.min_speed[0], self.max_speed[0])
-            self.target_speed[1] = random.uniform(self.min_speed[0], self.max_speed[0])
-            self.target_speed[2] = random.uniform(self.min_speed[0], self.max_speed[0])
-        else:
-            self.target_speed = np.zeros(3)
+        self.target_speed[0] = random.uniform(self.min_speed[0], self.max_speed[0])
+        self.target_speed[1] = random.uniform(self.min_speed[0], self.max_speed[0])
+        self.target_speed[2] = random.uniform(self.min_speed[0], self.max_speed[0])
 
         if not self.test:
             # TODO: randomize mass and recalculate weight
@@ -308,11 +268,6 @@ class CassieEnv:
         else:
             self.motor_encoder_noise = np.zeros(10)
             self.joint_encoder_noise = np.zeros(6)
-
-        # only randomize init height for standing (commanded velocities are all zero)
-        if np.sum(self.target_speed) == 0 and np.sum(self.target_orientation) == 0:
-            # TODO: randomize initial height
-            self.randomize_init_height()
 
         # reset with perturbations and/or from a different stance (use_phase=True)
         if np.random.rand() < reset_ratio:
@@ -354,32 +309,7 @@ class CassieEnv:
         self.cassie_state.joint.position[:] = [0, 1.4267, -1.5968, 0, 1.4267, -1.5968]
         self.cassie_state.joint.velocity[:] = np.zeros(6)
 
-    def randomize_init_height(self):
-        mid_start = [-2.83004740e-03, -2.29114732e-02, 7.07065845e-01, 9.99894779e-01,
-                     1.10562740e-02, -6.12652366e-03, 7.11723211e-03, 1.50099449e-02,
-                     1.64266778e-02, 8.24133043e-01, 8.37481179e-01, -9.69445402e-03,
-                     6.13690062e-02, -5.42922773e-01, -1.90945471e+00, -4.85589866e-02,
-                     2.26580429e+00, -4.62971329e-02, -1.91282419e+00, 1.89426871e+00,
-                     -2.01747242e+00, 2.31781351e-03, 1.44250744e-02, 8.12155963e-01,
-                     8.36154471e-01, -1.00090471e-03, -5.47184822e-02, -5.45756894e-01,
-                     -1.90783323e+00, -5.71023096e-02, 2.28292790e+00, -5.06616206e-02,
-                     -1.90963150e+00, 1.89109144e+00, -2.01460222e+00]
-
-        high_start = [6.10130896e-04, -3.23304477e-04, 1.00659806e+00, 9.99977272e-01,
-                      -1.24530409e-03, -6.60246460e-03, 5.58494911e-04, 1.06175814e-02,
-                      6.16906927e-03, 4.46850777e-01, 9.81816364e-01, -1.65223535e-02,
-                      1.59090533e-02, -1.88442409e-01, -1.13004694e+00, -4.11360961e-02,
-                      1.44296047e+00, -2.39222365e-02, -1.46633365e+00, 1.44824750e+00,
-                      -1.57126122e+00, -2.79549256e-03, 6.46317570e-03, 4.50763457e-01,
-                      9.81461310e-01, 4.00951503e-03, -1.37635448e-02, -1.91123483e-01,
-                      -1.15727612e+00, -1.67963434e-02, 1.43236886e+00, -2.01196652e-02,
-                      -1.48618073e+00, 1.46805721e+00, -1.59446755e+00]
-
-        init_height = random.choice([mid_start, high_start])
-
-        self.sim.set_qpos(init_height)
-
-    def compute_reward(self, qpos, qvel, foot_pos, rw=(0.1, 0.1, 0.3, 0.1, 0.1, 0.3)):
+    def compute_reward(self, qpos, qvel, foot_pos, rw=(0.1, 0.1, 0.6, 0.1, 0.1,)):
         # rw=(pose, CoM pos, CoM vel, foot placement, foot/pelvis orientation, GRF)
 
         left_foot_pos  = foot_pos[:3]
@@ -413,36 +343,31 @@ class CassieEnv:
 
         # 3. CoM Velocity Modulation (Commanded XY)
         x_target_vel = np.exp(-100 * np.linalg.norm(qvel[0] - self.target_speed[0]) ** 2)
-        y_target_vel = np.exp(-50  * np.linalg.norm(qvel[1] - self.target_speed[1]) ** 2)
-        z_target_vel = np.exp(-25  * np.linalg.norm(qvel[2] - self.target_speed[2]) ** 2)
+        y_target_vel = np.exp(-100  * np.linalg.norm(qvel[1] - self.target_speed[1]) ** 2)
+        z_target_vel = np.exp(-100  * np.linalg.norm(qvel[2] - self.target_speed[2]) ** 2)
 
         r_com_vel = 0.75 * x_target_vel + 0.2 * y_target_vel + 0.05 * z_target_vel
 
         # 4. Foot Placement
-        foot_placement_coeff = 1e3
 
-        # 4a. Foot Alignment
-        r_feet_align = np.exp(-foot_placement_coeff * (foot_pos[0] - foot_pos[3]) ** 2)
-
-        # 4b. Feet Width
+        # 4a. Feet Width
         target_width = 0.18  # m = 18 cm makes the support polygon a square
         width_thresh = 0.02  # m = 2 cm
         feet_width = np.linalg.norm([foot_pos[1], foot_pos[4]])
 
         if feet_width < target_width - width_thresh:
-            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width - width_thresh)) ** 2)
+            r_foot_width = np.exp(-100 * (feet_width - (target_width - width_thresh)) ** 2)
         elif feet_width > target_width + width_thresh:
-            r_foot_width = np.exp(-foot_placement_coeff * (feet_width - (target_width + width_thresh)) ** 2)
+            r_foot_width = np.exp(-100 * (feet_width - (target_width + width_thresh)) ** 2)
         else:
             r_foot_width = 1.
 
-        # 4c. Foot Orientation (keep the feet neutral)
+        # 4b. Foot Orientation (keep the feet neutral)
         r_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("left-foot"))  ** 2
         l_foot_orient_error = 1 - np.inner(self.neutral_foot_orient, self.sim.xquat("right-foot")) ** 2
         r_foot_neutral = np.exp(-1e4 * np.linalg.norm([l_foot_orient_error, r_foot_orient_error]) ** 2)
 
-        r_foot_placement = 0.6 * r_foot_width + 0.3 * r_foot_neutral + 0.1 * r_feet_align\
-            if np.sum(self.target_speed) == 0 else 0.6 * r_foot_width + 0.4 * r_foot_neutral
+        r_foot_placement = 0.6 * r_foot_width + 0.4 * r_foot_neutral
 
         # 5. Foot/Pelvis Orientation TODO: Fix for gazing, feet needs to be detached from pelvis
         fp_orientation_coeff = 100
@@ -456,17 +381,13 @@ class CassieEnv:
 
         r_fp_orient = 0.5 * left_foot_orient + 0.5 * right_foot_orient
 
-        # 6. Distance covered
-        target_dist = (self.target_speed[0] * 0.03) * self.timestep
-        r_dist  = np.exp(-50 * (target_dist - qpos[0]) ** 2)
-
         # Total Reward
         reward = (rw[0] * r_pose
                   + rw[1] * r_com_pos
                   + rw[2] * r_com_vel
                   + rw[3] * r_foot_placement
                   + rw[4] * r_fp_orient
-                  + rw[5] * r_dist)
+                  )
 
         if self.writer is not None and self.debug and not self.test:
             # log episode reward to tensorboard
@@ -475,22 +396,20 @@ class CassieEnv:
             self.writer.add_scalar('env_reward/com_vel', r_com_vel, self.total_steps)
             self.writer.add_scalar('env_reward/foot_placement', r_foot_placement, self.total_steps)
             self.writer.add_scalar('env_reward/foot_orientation', r_fp_orient, self.total_steps)
-            self.writer.add_scalar('env_reward/distance', r_dist, self.total_steps)
 
         elif self.writer is None and self.debug:
-            print('[{:3}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}], DIST[{:.3f}]]'.format(self.timestep,
-                                                                                                                            r_pose,
-                                                                                                                            r_com_pos,
-                                                                                                                            r_com_vel,
-                                                                                                                            r_foot_placement,
-                                                                                                                            r_fp_orient,
-                                                                                                                            r_foot_neutral,
-                                                                                                                            r_dist,
-                                                                                                                           ))
+            print('[{:3}] Rewards: Pose [{:.3f}], CoM [{:.3f}, {:.3f}], Foot [{:.3f}, {:.3f}, {:.3f}]]'.format(self.timestep,
+                                                                                                                                  r_pose,
+                                                                                                                                  r_com_pos,
+                                                                                                                                  r_com_vel,
+                                                                                                                                  r_foot_placement,
+                                                                                                                                  r_fp_orient,
+                                                                                                                                  r_foot_neutral,
+                                                                                                                                  ))
 
         return reward
 
-    def compute_cost(self, action, foot_frc, qvel, cw=(0.1, 0., 0., 0., 0.5)):
+    def compute_cost(self, action, foot_frc, qvel, cw=(0.3, 0., 0., 0., 0.)):
         # cost_coeff = self.total_steps / self.training_steps if not self.test else 1.
 
         # 1. Power Consumption (Torque and Velocity) and Cost of Transport (CoT = P / [M * v])
@@ -499,9 +418,9 @@ class CassieEnv:
                                                     positive_only=True)
 
         # calculate cost of transport in the XY
-        # cot = power_estimate / (np.sum(self.mass) * abs(qvel[0])) if abs(qvel[0]) > 0 else power_estimate
+        cot = power_estimate / (np.sum(self.mass) * abs(qvel[0])) if abs(qvel[0]) > 0 else power_estimate
 
-        c_power = 1. - np.exp(-1e-4 * power_estimate ** 2)
+        c_power = 1. - np.exp(-1e-4 * cot ** 2)
 
         # 2. Action Cost
         action_diff = np.subtract(self.previous_action[:10], action[:10])

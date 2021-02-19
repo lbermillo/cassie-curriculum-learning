@@ -4,7 +4,7 @@ import torch
 import argparse
 
 from rl.agents import TD3, SAC
-from cassie.envs import cassie_standing, cassie_walking
+from cassie.envs import cassie_standingV1, cassie_walking
 
 # use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,22 +73,26 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # create envs list
-    envs = (('Standing', cassie_standing.CassieEnv), ('Walking', cassie_walking.CassieEnv))
+    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walking.CassieEnv))
+
+    # env = envs[args.env][1](simrate=args.simrate,
+    #                         clock_based=args.clock,
+    #                         reward_cutoff=args.rcut,
+    #                         target_action_weight=args.tw,
+    #                         forces=args.forces,
+    #                         force_fq=args.force_fq,
+    #                         min_speed=args.min_speed,
+    #                         max_speed=args.max_speed,
+    #                         power_threshold=args.power_threshold,
+    #                         reduced_input=args.reduced_input,
+    #                         learn_PD=args.learn_PD,
+    #                         learn_command=args.learn_command,
+    #                         config=args.config,
+    #                         debug=args.debug)
 
     env = envs[args.env][1](simrate=args.simrate,
-                            clock_based=args.clock,
                             reward_cutoff=args.rcut,
-                            target_action_weight=args.tw,
-                            forces=args.forces,
-                            force_fq=args.force_fq,
-                            min_speed=args.min_speed,
-                            max_speed=args.max_speed,
-                            power_threshold=args.power_threshold,
-                            reduced_input=args.reduced_input,
-                            learn_PD=args.learn_PD,
-                            learn_command=args.learn_command,
-                            config=args.config,
-                            debug=args.debug)
+                            debug=args.debug, )
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -96,8 +100,7 @@ if __name__ == "__main__":
 
     # initialize agent
     if args.algo.lower() == 'td3':
-        agent = TD3.Agent(args.algo,
-                          state_dim,
+        agent = TD3.Agent(state_dim,
                           action_dim,
                           max_action,
                           hidden_dim=args.hidden,
