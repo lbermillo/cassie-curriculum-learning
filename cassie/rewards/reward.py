@@ -12,7 +12,7 @@ def compute_reward(robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), 
     target_pel_orient = np.array([1., 0., 0., 0.])
     actual_pel_orient = rotate_to_orient(robot_state.pelvis.orientation[:])
     pel_orient_error  = 1 - np.inner(target_pel_orient, actual_pel_orient) ** 2
-    pel_orient_reward = kernel(pel_orient_error, 1000)
+    pel_orient_reward = kernel(pel_orient_error, 5000)
 
     # 2. Pelvis Rotational Velocity
     target_rot_vel = np.zeros(3)
@@ -24,7 +24,7 @@ def compute_reward(robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), 
     target_trans_vel = np.zeros(3)
     actual_trans_vel = qvel[:3]
     trans_vel_error  = np.linalg.norm(actual_trans_vel - target_trans_vel)
-    trans_vel_reward = kernel(trans_vel_error, 1)
+    trans_vel_reward = kernel(trans_vel_error, 5)
 
     # 4. Pelvis Position
     target_pel_pos = np.array([0.5 * (fpos[0] + fpos[3]),
@@ -48,7 +48,7 @@ def compute_reward(robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), 
     l_foot_orient_error = 1 - np.inner(target_l_foot_orient, actual_l_foot_orient) ** 2
     r_foot_orient_error = 1 - np.inner(target_r_foot_orient, actual_r_foot_orient) ** 2
 
-    foot_orient_reward  = 0.5 * kernel(l_foot_orient_error, 1000) + 0.5 * kernel(r_foot_orient_error, 1000)
+    foot_orient_reward  = 0.5 * kernel(l_foot_orient_error, 2500) + 0.5 * kernel(r_foot_orient_error, 2500)
 
     if debug:
         print('Rewards: Position [{:.3f}], Orient [PEL: {:.3f}, FOOT: {:.3f}], Velocity [ROT: {:.3f}, TRANS: {:.3f}]'.

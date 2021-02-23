@@ -102,13 +102,13 @@ class CassieEnv:
 
         # Calculate total reward
         total_reward = compute_reward(self.cassie_state, qpos, qvel, foot_pos, debug=self.debug) \
-                       - 0.5 * power_cost(self.cassie_state, np.sum(self.sim.get_body_mass()), qvel, coeff=1e-4, cot=True, debug=self.debug)
+                       - 0.2 * power_cost(self.cassie_state, np.sum(self.sim.get_body_mass()), qvel, coeff=1, cot=True, debug=self.debug)
 
         # Early termination conditions
         done = not (0.4 < qpos[2] < 3.0) or total_reward < self.reward_cutoff
 
         # return state, reward, and done flag
-        return self.get_full_state(), total_reward, done, {}
+        return self.get_full_state(), total_reward, done, {'fall': (0.4 < qpos[2] < 3.0)}
 
     def reset(self):
         # reset robot state
