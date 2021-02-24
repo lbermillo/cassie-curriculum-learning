@@ -6,7 +6,7 @@ def kernel(x, coeff=1.):
     return np.exp(-coeff * x ** 2)
 
 
-def compute_reward(robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), debug=False):
+def compute_reward(cmd, robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), debug=False):
 
     # 1. Pelvis Orientation
     target_pel_orient = np.array([1., 0., 0., 0.])
@@ -21,7 +21,7 @@ def compute_reward(robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0.2), 
     rot_vel_reward = kernel(rot_vel_error, 1)
 
     # 3. Pelvis Translational Velocity
-    target_trans_vel = np.zeros(3)
+    target_trans_vel = np.concatenate((cmd[:2], [0.]))
     actual_trans_vel = qvel[:3]
     trans_vel_error  = np.linalg.norm(actual_trans_vel - target_trans_vel)
     trans_vel_reward = kernel(trans_vel_error, 5)

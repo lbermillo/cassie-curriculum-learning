@@ -5,7 +5,7 @@ import random
 import numpy as np
 import torch
 from rl.agents import TD3, RTD3, SAC
-from cassie.envs import cassie_standing, cassie_standingV1, cassie_walking, cassie_jumping
+from cassie.envs import cassie_standingV1, cassie_walkingV1, cassie_jumping
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -34,6 +34,8 @@ if __name__ == '__main__':
                         help='min speeds in m/s (default: [0, 0, 0])')
     parser.add_argument('--max_speed', nargs='+', type=float, default=(0, 0, 0),
                         help='max speeds in m/s (default: [0, 0, 0])')
+    parser.add_argument('--speed', nargs='+', type=float, default=(0, 1),
+                        help='speeds in m/s (default: [0, 1])')
     parser.add_argument('--max_orient', type=float, default=0.,
                         help='max orientation change in radians (default: 0)')
     parser.add_argument('--power_threshold', type=int, default=150,
@@ -129,7 +131,7 @@ if __name__ == '__main__':
         torch.manual_seed(args.seed)
 
     # create envs list
-    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walking.CassieEnv),
+    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walkingV1.CassieEnv),
             ('Jumping', cassie_jumping.CassieEnv))
 
     # create agent id
@@ -146,7 +148,8 @@ if __name__ == '__main__':
         args.eps_steps,
         args.seed,
         args.reset_ratio,
-        [args.min_speed[0], args.max_speed[0]],
+        args.speed,
+        # [args.min_speed[0], args.max_speed[0]],
         args.clock,
         args.reduced_input,
         args.tag)
@@ -176,9 +179,15 @@ if __name__ == '__main__':
     #                         config=args.config,
     #                         writer=writer, )
 
-    env = envs[args.env][1](simrate=args.simrate,
-                            reward_cutoff=args.rcut[0],
-                            debug=args.debug,)
+    if args.env == 0:
+        env = envs[args.env][1](simrate=args.simrate,
+                                reward_cutoff=args.rcut[0],
+                                debug=args.debug,)
+    elif args.env == 1:
+        env = envs[args.env][1](speed=args.speed,
+                                simrate=args.simrate,
+                                reward_cutoff=args.rcut[0],
+                                debug=args.debug,)
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]

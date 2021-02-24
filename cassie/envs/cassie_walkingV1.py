@@ -12,7 +12,7 @@ from cassie.cassiemujoco import pd_in_t, state_out_t, CassieSim, CassieVis
 
 
 class CassieEnv:
-    def __init__(self, simrate=50, reward_cutoff=0.3, debug=False, config="cassie/cassiemujoco/cassie.xml"):
+    def __init__(self, speed=(0, 1), simrate=50, reward_cutoff=0.3, debug=False, config="cassie/cassiemujoco/cassie.xml"):
 
         # Using CassieSim
         self.config = config
@@ -26,6 +26,7 @@ class CassieEnv:
         self.config = config
         self.l_foot_pos = np.zeros(3)
         self.r_foot_pos = np.zeros(3)
+        self.speed = np.array(speed) * 10.
 
         # action offset so that the policy can learn faster and prevent standing on heels
         self.offset = np.array([0.0045, 0.0, 0.4973, -1.1997, -1.5968,
@@ -115,7 +116,7 @@ class CassieEnv:
         self.sim.set_const()
 
         # get the corresponding state from the reference trajectory for the current phase
-        init_qpos, init_qvel = self.get_ref_state(random.randint(0, self.phaselen), np.random.randint(0, 5) / 10.)
+        init_qpos, init_qvel = self.get_ref_state(random.randint(0, self.phaselen), np.random.randint(self.speed[1]) / 10.)
 
         # set initial joint positions and velocities
         self.sim.set_qpos(init_qpos)
@@ -123,6 +124,13 @@ class CassieEnv:
 
         # get updated robot state
         self.cassie_state = self.sim.step_pd(self.u)
+
+        # set new speed command
+        if self.speed[0] != self.speed[1]:
+            self.cmd_input[0] = np.random.randint(self.speed[0], self.speed[1])
+        else:
+            self.cmd_input[0] = self.speed[0]
+        self.cmd_input[0] /= 10.
 
         # return initial state
         return self.get_full_state()
