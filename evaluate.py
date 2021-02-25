@@ -4,7 +4,7 @@ import torch
 import argparse
 
 from rl.agents import TD3, SAC
-from cassie.envs import cassie_standingV1, cassie_walking
+from cassie.envs import cassie_standingV1, cassie_walkingV1
 
 # use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # create envs list
-    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walking.CassieEnv))
+    envs = (('Standing', cassie_standingV1.CassieEnv), ('Walking', cassie_walkingV1.CassieEnv))
 
     # env = envs[args.env][1](simrate=args.simrate,
     #                         clock_based=args.clock,
@@ -90,9 +90,15 @@ if __name__ == "__main__":
     #                         config=args.config,
     #                         debug=args.debug)
 
-    env = envs[args.env][1](simrate=args.simrate,
-                            reward_cutoff=args.rcut,
-                            debug=args.debug, )
+    if args.env == 0:
+        env = envs[args.env][1](simrate=args.simrate,
+                                reward_cutoff=args.rcut,
+                                debug=args.debug, )
+    elif args.env == 1:
+        env = envs[args.env][1](speed=(0, 1),
+                                simrate=args.simrate,
+                                reward_cutoff=args.rcut,
+                                debug=args.debug, )
 
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]

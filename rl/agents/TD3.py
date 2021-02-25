@@ -181,7 +181,7 @@ class Agent:
     def train(self, env, training_steps, max_steps, evaluate_interval, expl_noise=0.1, directory='results',
               filename=None, reset_ratio=0, use_phase=False):
         episode = 0
-        best_score = 0.0
+        best_score = np.NINF
 
         while self.total_steps < training_steps:
 

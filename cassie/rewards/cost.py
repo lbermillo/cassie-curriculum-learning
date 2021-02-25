@@ -12,7 +12,7 @@ def power_cost(robot_state, robot_mass, qvel, coeff=1e-3, cot=False, debug=False
                                        robot_state.motor.velocity[:],
                                        positive_only=True)
     if cot:
-        power_cost = kernel(power_estimate / (robot_mass * 9.81 * abs(qvel[0])), coeff)
+        power_cost = kernel(power_estimate / (robot_mass * 9.81 * abs(qvel[0])),  coeff)
     else:
         power_cost = kernel(power_estimate, coeff)
 
