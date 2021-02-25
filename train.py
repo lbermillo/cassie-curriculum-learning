@@ -253,5 +253,6 @@ if __name__ == '__main__':
                 use_phase=args.use_phase)
 
     if writer:
+
         # cleanup
         writer.close()
