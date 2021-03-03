@@ -101,8 +101,8 @@ class CassieEnv:
         qvel = np.copy(self.sim.qvel())
 
         # Calculate total reward
-        total_reward = compute_reward(self.cmd_input, self.cassie_state, qpos, qvel, foot_pos, rw=(1/3, 0., 0., 1/3, 1/3), debug=self.debug) \
-                       - power_cost(self.cassie_state, np.sum(self.sim.get_body_mass()), qvel, coeff=5e-6, debug=self.debug)
+        total_reward = compute_reward(self.cmd_input, self.cassie_state, qpos, qvel, foot_pos, debug=self.debug) \
+                       - 0.5 * power_cost(self.cassie_state, np.sum(self.sim.get_body_mass()), qvel, debug=self.debug)
 
         # Early termination conditions
         done = not (0.4 < qpos[2] < 3.0) or total_reward < self.reward_cutoff

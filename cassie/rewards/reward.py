@@ -24,7 +24,7 @@ def compute_reward(cmd, robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0
     target_trans_vel = np.concatenate((cmd[:2], [0.]))
     actual_trans_vel = qvel[:3]
     trans_vel_error  = np.linalg.norm(actual_trans_vel - target_trans_vel)
-    trans_vel_reward = kernel(trans_vel_error, 5)
+    trans_vel_reward = kernel(trans_vel_error, 10)
 
     # 4. Pelvis Position
     target_pel_pos = np.array([0.5 * (fpos[0] + fpos[3]),
@@ -33,7 +33,7 @@ def compute_reward(cmd, robot_state, qpos, qvel, fpos, rw=(0.2, 0.2, 0.2, 0.2, 0
     actual_pel_pos = qpos[:3]
 
     pel_pos_error  = np.linalg.norm(actual_pel_pos - target_pel_pos)
-    pel_pos_reward = kernel(pel_pos_error, 10)
+    pel_pos_reward = kernel(pel_pos_error, 5)
 
     # 5. Pelvis/Leg Yaw
     actual_l_foot_orient = quaternion_product(actual_pel_orient, robot_state.leftFoot.orientation)
